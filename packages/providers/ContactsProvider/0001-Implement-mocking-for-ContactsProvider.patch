@@ -1,0 +1,148 @@
+From 68e301c595b30e93aa14029d57cb5803c0140172 Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Tue, 12 Oct 2010 13:50:59 +0100
+Subject: [PATCH] Implement mocking for ContactsProvider
+
+Change-Id: Ic9e90080adf227ca3ba7d7683a07888c94b87233
+---
+ .../providers/contacts/ContactsDatabaseHelper.java |   25 +++++++++++++++---
+ .../providers/contacts/ContactsProvider2.java      |   28 +++++++++++++++++---
+ 2 files changed, 45 insertions(+), 8 deletions(-)
+
+diff --git a/src/com/android/providers/contacts/ContactsDatabaseHelper.java b/src/com/android/providers/contacts/ContactsDatabaseHelper.java
+index edd73ff..1d115df 100644
+--- a/src/com/android/providers/contacts/ContactsDatabaseHelper.java
++++ b/src/com/android/providers/contacts/ContactsDatabaseHelper.java
+@@ -77,8 +77,12 @@ import java.util.Locale;
+     static final int DATABASE_VERSION = 309;
+ 
+     private static final String DATABASE_NAME = "contacts2.db";
++    private static final String DATABASE_MOCK_NAME = "contacts_mock.db";
+     private static final String DATABASE_PRESENCE = "presence_db";
+ 
++    private static final String READ_PERMISSION = "android.permission.READ_CONTACTS";
++    private static final String WRITE_PERMISSION = "android.permission.WRITE_CONTACTS";
++
+     public interface Tables {
+         public static final String CONTACTS = "contacts";
+         public static final String RAW_CONTACTS = "raw_contacts";
+@@ -479,6 +483,7 @@ import java.util.Locale;
+     private boolean mReopenDatabase = false;
+ 
+     private static ContactsDatabaseHelper sSingleton = null;
++    private static ContactsDatabaseHelper sMockSingleton = null;
+ 
+     private boolean mUseStrictPhoneNumberComparison;
+ 
+@@ -488,18 +493,30 @@ import java.util.Locale;
+     private String[] mUnrestrictedPackages;
+ 
+     public static synchronized ContactsDatabaseHelper getInstance(Context context) {
+-        if (sSingleton == null) {
+-            sSingleton = new ContactsDatabaseHelper(context);
+-        }
++	if (sSingleton == null) {
++	    sSingleton = new ContactsDatabaseHelper(context, DATABASE_NAME);
++	}
+         return sSingleton;
+     }
+ 
++    public static synchronized ContactsDatabaseHelper getMockInstance(Context context) {
++	if (sMockSingleton == null) {
++	    sMockSingleton = new ContactsDatabaseHelper(context, DATABASE_MOCK_NAME);
++	}
++	return sMockSingleton;
++    }
++
+     /**
+      * Private constructor, callers except unit tests should obtain an instance through
+      * {@link #getInstance(android.content.Context)} instead.
+      */
+     ContactsDatabaseHelper(Context context) {
+-        super(context, DATABASE_NAME, null, DATABASE_VERSION);
++	this(context, DATABASE_NAME);
++    }
++    
++    ContactsDatabaseHelper(Context context, String dbName) {
++	super(context, dbName, null, DATABASE_VERSION);
++
+         if (false) Log.i(TAG, "Creating OpenHelper");
+         Resources resources = context.getResources();
+ 
+diff --git a/src/com/android/providers/contacts/ContactsProvider2.java b/src/com/android/providers/contacts/ContactsProvider2.java
+index f4a4c5a..8474109 100644
+--- a/src/com/android/providers/contacts/ContactsProvider2.java
++++ b/src/com/android/providers/contacts/ContactsProvider2.java
+@@ -55,6 +55,7 @@ import android.content.Context;
+ import android.content.IContentService;
+ import android.content.Intent;
+ import android.content.OperationApplicationException;
++import android.content.pm.PackageManager;
+ import android.content.SharedPreferences;
+ import android.content.SyncAdapterType;
+ import android.content.UriMatcher;
+@@ -73,6 +74,7 @@ import android.database.sqlite.SQLiteQueryBuilder;
+ import android.database.sqlite.SQLiteStatement;
+ import android.net.Uri;
+ import android.os.AsyncTask;
++import android.os.Binder;
+ import android.os.Bundle;
+ import android.os.MemoryFile;
+ import android.os.RemoteException;
+@@ -1806,6 +1808,7 @@ public class ContactsProvider2 extends SQLiteContentProvider implements OnAccoun
+ 
+     private HashMap<String, DataRowHandler> mDataRowHandlers;
+     private ContactsDatabaseHelper mDbHelper;
++    private ContactsDatabaseHelper mMockDbHelper;
+ 
+     private NameSplitter mNameSplitter;
+     private NameLookupBuilder mNameLookupBuilder;
+@@ -1856,7 +1859,8 @@ public class ContactsProvider2 extends SQLiteContentProvider implements OnAccoun
+ 
+     private boolean initialize() {
+         final Context context = getContext();
+-        mDbHelper = (ContactsDatabaseHelper)getDatabaseHelper();
++        mDbHelper = (ContactsDatabaseHelper)getDatabaseHelper(context, true);
++	mMockDbHelper = (ContactsDatabaseHelper)getDatabaseHelper(context, false);
+         mGlobalSearchSupport = new GlobalSearchSupport(this);
+         mLegacyApiSupport = new LegacyApiSupport(context, mDbHelper, this, mGlobalSearchSupport);
+         mContactAggregator = new ContactAggregator(this, mDbHelper,
+@@ -2092,7 +2096,15 @@ public class ContactsProvider2 extends SQLiteContentProvider implements OnAccoun
+     /* Visible for testing */
+     @Override
+     protected ContactsDatabaseHelper getDatabaseHelper(final Context context) {
+-        return ContactsDatabaseHelper.getInstance(context);
++	return getDatabaseHelper(context, true);
++    }
++
++    protected ContactsDatabaseHelper getDatabaseHelper(final Context context, boolean real) {
++	if (real) {
++	    return ContactsDatabaseHelper.getInstance(context);
++	} else {
++	    return ContactsDatabaseHelper.getMockInstance(context);
++	}
+     }
+ 
+     /* package */ NameSplitter getNameSplitter() {
+@@ -4179,8 +4191,16 @@ public class ContactsProvider2 extends SQLiteContentProvider implements OnAccoun
+         if (VERBOSE_LOGGING) {
+             Log.v(TAG, "query: " + uri);
+         }
+-
+-        final SQLiteDatabase db = mDbHelper.getReadableDatabase();
++	boolean mock = getContext().checkCallingOrSelfMockPermission("android.permission.READ_CONTACTS") == 
++	    PackageManager.PERMISSION_MOCKED;
++	
++	final SQLiteDatabase db;
++	
++	if (mock) {
++	    db = mMockDbHelper.getReadableDatabase();
++	} else {
++	    db = mDbHelper.getReadableDatabase();
++	}
+ 
+         SQLiteQueryBuilder qb = new SQLiteQueryBuilder();
+         String groupBy = null;
+-- 
+1.7.0.4
+

@@ -1,0 +1,44 @@
+From ac2e971bd96d65ef823e614b444bc43b39c25805 Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Tue, 19 Oct 2010 16:30:25 +0100
+Subject: [PATCH] Make mocking of writes semantically correct
+
+Change-Id: Ifff69ebc57fd8f928829fb70574ed57dff49ce3a
+---
+ .../providers/calendar/CalendarProvider2.java      |    6 +++---
+ 1 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/src/com/android/providers/calendar/CalendarProvider2.java b/src/com/android/providers/calendar/CalendarProvider2.java
+index 3c98cc2..bbf5d05 100644
+--- a/src/com/android/providers/calendar/CalendarProvider2.java
++++ b/src/com/android/providers/calendar/CalendarProvider2.java
+@@ -758,7 +758,7 @@ public class CalendarProvider2 extends SQLiteContentProvider implements OnAccoun
+     @Override
+     public int bulkInsert(Uri uri, ContentValues[] values) {
+ 	if (getContext().checkCallingOrSelfMockPermission("android.permission.WRITE_CALENDAR") == PackageManager.PERMISSION_MOCKED) {
+-	    return 1;
++	    return 0;
+ 	} else {
+ 	    return super.bulkInsert(uri, values);
+ 	}
+@@ -767,7 +767,7 @@ public class CalendarProvider2 extends SQLiteContentProvider implements OnAccoun
+     @Override
+     public int update(Uri uri, ContentValues values, String selection, String[] selectionArgs) {
+ 	if (getContext().checkCallingOrSelfMockPermission("android.permission.WRITE_CALENDAR") == PackageManager.PERMISSION_MOCKED) {
+-	    return 1;
++	    return 0;
+ 	} else {
+ 	    return super.update(uri, values, selection, selectionArgs);
+ 	}
+@@ -776,7 +776,7 @@ public class CalendarProvider2 extends SQLiteContentProvider implements OnAccoun
+     @Override
+     public int delete(Uri uri, String selection, String[] selectionArgs) {
+ 	if (getContext().checkCallingOrSelfMockPermission("android.permission.WRITE_CALENDAR") == PackageManager.PERMISSION_MOCKED) {
+-	    return 1;
++	    return 0;
+ 	} else {
+ 	    return super.delete(uri, selection, selectionArgs);
+ 	}
+-- 
+1.7.0.4
+

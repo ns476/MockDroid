@@ -1,0 +1,46 @@
+From 18f40aa7a90407b297179f3be32d4b803b7c561f Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Mon, 2 Aug 2010 15:48:18 +0100
+Subject: [PATCH 04/12] Add userspace part of network mocking
+
+Change-Id: I6b696a66b9c13a5ec11bdd2b0dd3084a798a26e5
+---
+ .../com/android/server/PackageManagerService.java  |   13 ++++++++++++-
+ 1 files changed, 12 insertions(+), 1 deletions(-)
+
+diff --git a/services/java/com/android/server/PackageManagerService.java b/services/java/com/android/server/PackageManagerService.java
+index 56ee3f8..d828e5e 100644
+--- a/services/java/com/android/server/PackageManagerService.java
++++ b/services/java/com/android/server/PackageManagerService.java
+@@ -1127,7 +1127,9 @@ class PackageManagerService extends IPackageManager.Stub {
+ 			perms.add(line);
+ 		    }
+ 		}
++
+ 		mocks.put(pkgName, perms);
++
+ 	    } catch (FileNotFoundException e) {
+ 		Slog.w(TAG, "Couldn't open mock permission file");
+ 		continue;
+@@ -1148,8 +1150,17 @@ class PackageManagerService extends IPackageManager.Stub {
+ 		continue;
+ 	    }
+ 	    for (String perm: perms) {
+-		pkg.mockedPermissions.add(perm);
+ 		Slog.i(TAG, "Mocking permission " + perm);
++		if (perm.equals("android.permissions.INTERNET")) {
++                   PackageSetting ps = (PackageSetting) pkg.mExtras;
++                   if (ps.sharedUser != null) {
++                       ps.sharedUser.gids = appendInt(ps.sharedUser.gids, Process.getGidForName("mock_inet"));
++                   } else {
++                       ps.gids = appendInt(ps.gids, Process.getGidForName("mock_inet"));
++                   }
++		} else {
++		    pkg.mockedPermissions.add(perm);
++		}
+ 	    }
+ 	}
+ 	Slog.i(TAG, "Finished reading mock permissions");
+-- 
+1.7.0.4
+

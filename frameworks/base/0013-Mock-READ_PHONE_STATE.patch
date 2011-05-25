@@ -1,0 +1,98 @@
+From a58560a07e1abf735905b402bba54d72cdf929ee Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Tue, 19 Oct 2010 19:47:24 +0100
+Subject: [PATCH] Mock READ_PHONE_STATE
+
+Change-Id: Ic1525cf92130e2fc82028fed9553a045319c32b2
+---
+ .../android/internal/telephony/PhoneSubInfo.java   |   25 ++++++++++++++++++++
+ 1 files changed, 25 insertions(+), 0 deletions(-)
+
+diff --git a/telephony/java/com/android/internal/telephony/PhoneSubInfo.java b/telephony/java/com/android/internal/telephony/PhoneSubInfo.java
+index 4f71bb1..07d36fb 100644
+--- a/telephony/java/com/android/internal/telephony/PhoneSubInfo.java
++++ b/telephony/java/com/android/internal/telephony/PhoneSubInfo.java
+@@ -52,6 +52,9 @@ public class PhoneSubInfo extends IPhoneSubInfo.Stub {
+      */
+     public String getDeviceId() {
+         mContext.enforceCallingOrSelfPermission(READ_PHONE_STATE, "Requires READ_PHONE_STATE");
++	if (mContext.checkCallingOrSelfMockPermission(READ_PHONE_STATE) == PackageManager.PERMISSION_MOCKED) {
++		return "49015420323751";
++	}
+         return mPhone.getDeviceId();
+     }
+ 
+@@ -61,6 +64,9 @@ public class PhoneSubInfo extends IPhoneSubInfo.Stub {
+      */
+     public String getDeviceSvn() {
+         mContext.enforceCallingOrSelfPermission(READ_PHONE_STATE, "Requires READ_PHONE_STATE");
++	if (mContext.checkCallingOrSelfMockPermission(READ_PHONE_STATE) == PackageManager.PERMISSION_MOCKED) {
++		return "1";
++	}	
+         return mPhone.getDeviceSvn();
+     }
+ 
+@@ -69,6 +75,9 @@ public class PhoneSubInfo extends IPhoneSubInfo.Stub {
+      */
+     public String getSubscriberId() {
+         mContext.enforceCallingOrSelfPermission(READ_PHONE_STATE, "Requires READ_PHONE_STATE");
++	if (mContext.checkCallingOrSelfMockPermission(READ_PHONE_STATE) == PackageManager.PERMISSION_MOCKED) {
++		return "310150123456789";
++	}
+         return mPhone.getSubscriberId();
+     }
+ 
+@@ -77,6 +86,9 @@ public class PhoneSubInfo extends IPhoneSubInfo.Stub {
+      */
+     public String getIccSerialNumber() {
+         mContext.enforceCallingOrSelfPermission(READ_PHONE_STATE, "Requires READ_PHONE_STATE");
++	if (mContext.checkCallingOrSelfMockPermission(READ_PHONE_STATE) == PackageManager.PERMISSION_MOCKED) {
++		return "89014104240123456781";
++	}
+         return mPhone.getIccSerialNumber();
+     }
+ 
+@@ -85,6 +97,9 @@ public class PhoneSubInfo extends IPhoneSubInfo.Stub {
+      */
+     public String getLine1Number() {
+         mContext.enforceCallingOrSelfPermission(READ_PHONE_STATE, "Requires READ_PHONE_STATE");
++	if (mContext.checkCallingOrSelfMockPermission(READ_PHONE_STATE) == PackageManager.PERMISSION_MOCKED) {
++		return "07700 954 321";
++	}
+         return mPhone.getLine1Number();
+     }
+ 
+@@ -93,6 +108,10 @@ public class PhoneSubInfo extends IPhoneSubInfo.Stub {
+      */
+     public String getLine1AlphaTag() {
+         mContext.enforceCallingOrSelfPermission(READ_PHONE_STATE, "Requires READ_PHONE_STATE");
++	if (mContext.checkCallingOrSelfMockPermission(READ_PHONE_STATE) == PackageManager.PERMISSION_MOCKED) {
++		// Not actually too sure what this is?
++		return "A";
++	}
+         return (String) mPhone.getLine1AlphaTag();
+     }
+ 
+@@ -101,6 +120,9 @@ public class PhoneSubInfo extends IPhoneSubInfo.Stub {
+      */
+     public String getVoiceMailNumber() {
+         mContext.enforceCallingOrSelfPermission(READ_PHONE_STATE, "Requires READ_PHONE_STATE");
++	if (mContext.checkCallingOrSelfMockPermission(READ_PHONE_STATE) == PackageManager.PERMISSION_MOCKED) {
++
++	}
+         return (String) mPhone.getVoiceMailNumber();
+     }
+ 
+@@ -109,6 +131,9 @@ public class PhoneSubInfo extends IPhoneSubInfo.Stub {
+      */
+     public String getVoiceMailAlphaTag() {
+         mContext.enforceCallingOrSelfPermission(READ_PHONE_STATE, "Requires READ_PHONE_STATE");
++	if (mContext.checkCallingOrSelfMockPermission(READ_PHONE_STATE) == PackageManager.PERMISSION_MOCKED) {
++		return "07700 954 321";
++	}
+         return (String) mPhone.getVoiceMailAlphaTag();
+     }
+ 
+-- 
+1.7.0.4
+

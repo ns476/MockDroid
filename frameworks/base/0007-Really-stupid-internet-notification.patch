@@ -1,0 +1,245 @@
+From 22f96b2c32c98dd66f53de791ad83f004dbfcea3 Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Thu, 16 Sep 2010 15:54:13 +0100
+Subject: [PATCH 07/12] Really stupid internet notification
+
+Change-Id: I6408c8956cb81394f8eef3d585d20d30e955a02b
+---
+ .../com/android/server/IPTablesReaderService.java  |  197 ++++++++++++++++++++
+ services/java/com/android/server/SystemServer.java |    8 +-
+ 2 files changed, 204 insertions(+), 1 deletions(-)
+ create mode 100644 services/java/com/android/server/IPTablesReaderService.java
+
+diff --git a/services/java/com/android/server/IPTablesReaderService.java b/services/java/com/android/server/IPTablesReaderService.java
+new file mode 100644
+index 0000000..d1cf942
+--- /dev/null
++++ b/services/java/com/android/server/IPTablesReaderService.java
+@@ -0,0 +1,197 @@
++
++package com.android.server;
++
++import android.app.ActivityThread;
++import android.content.Context;
++import android.content.Intent;
++import android.content.pm.IPackageManager;
++import android.os.Handler;
++import android.os.Looper;
++import android.os.Message;
++import android.os.Process;
++import android.util.Log;
++
++import java.io.File;
++import java.io.FileNotFoundException;
++import java.io.FileReader;
++import java.io.BufferedReader;
++import java.io.IOException;
++import java.util.Map;
++import java.util.HashSet;
++import java.util.LinkedHashMap;
++import java.util.regex.Pattern;
++import java.util.regex.Matcher;
++import java.util.Timer;
++import java.util.TimerTask;
++
++public class IPTablesReaderService {
++    private static final String TAG = "IPTablesReader";
++    private Context mContext;
++    private IPTablesReaderWorker mWorker;
++    private IPackageManager mPM;
++
++    public IPTablesReaderService(Context context) {
++	mContext = context;
++	mWorker = new IPTablesReaderWorker();
++	mPM = ActivityThread.currentActivityThread().getPackageManager();
++	mWorker.start();
++    }
++
++    private static class IPTablesInfo {
++	public int uid;
++	public int gid;
++	public String src;
++	public String dst;
++
++	public boolean equals(IPTablesInfo other) {
++	    return uid == other.uid &&
++		gid == other.gid &&
++		src.equals(other.src) &&
++		dst.equals(other.src);
++	}
++
++	public int hashCode() {
++	    return (uid +
++		    3 * gid +
++		    5 * src.hashCode() +
++		    7 * dst.hashCode());
++	}
++
++	public String toString() {
++	    return String.format("uid=%d src=%s dst=%s", uid, src, dst);
++	}
++    }
++
++    private class IPTablesReaderWorker extends Thread {
++	final Pattern LEN_REGEX = Pattern.compile("LEN=([0-9]+)");
++	final Pattern UID_REGEX = Pattern.compile("UID=([0-9]+)");
++	final Pattern GID_REGEX = Pattern.compile("GID=([0-9]+)");
++	final Pattern SRC_REGEX = Pattern.compile("SRC=([0-9\\.]+)");	
++	final Pattern DST_REGEX = Pattern.compile("DST=([0-9\\.]+)");
++	
++	final Pattern MOCKED_REGEX = Pattern.compile("Mocking socket uid=([0-9]+)");
++
++	BufferedReader mBR = null;
++
++	boolean timerStarted = false;
++	
++	// Packet info to size
++	private LinkedHashMap<IPTablesInfo, Integer> mPackets = new LinkedHashMap<IPTablesInfo, Integer>();
++	private HashSet<Integer> mMocked = new HashSet<Integer>();
++
++	private String extract(String line, Pattern p) {
++	    Matcher m = p.matcher(line);
++	    m.find();
++	    return m.group(1);
++	}
++
++	private int extractInt(String line, Pattern p) throws NumberFormatException {
++	    return Integer.parseInt(extract(line, p));
++	}
++	
++	// Abstract out the receiving of events as we want to move away from
++	// iptables in future and use netlink or something
++
++	private void init() throws FileNotFoundException {
++	    mBR = new BufferedReader(new FileReader("/data/log"));
++	}
++
++	private boolean handleNext() throws IOException {
++	    while (true) {
++		String line = mBR.readLine();
++		Log.i("KERNEL", line);
++		if (line == null) return false;
++		try {
++		    IPTablesInfo info = new IPTablesInfo();
++		    int size = extractInt (line, LEN_REGEX);
++		    info.uid = extractInt (line, UID_REGEX);
++		    info.gid = extractInt (line, GID_REGEX);
++		    info.src = extract (line, SRC_REGEX);
++		    info.dst = extract (line, DST_REGEX);
++
++		    synchronized (mPackets) {
++			Integer cur = mPackets.get(info);
++			if (cur == null) {
++			    mPackets.put (info, size);
++			    cur = 0;
++			} else {
++			    mPackets.put (info, cur + size);
++			}
++			forceTimer();
++		    }
++		} catch (Exception f) {
++		    try {
++			synchronized (mMocked) {
++			    int uid = extractInt (line, MOCKED_REGEX);
++			    mMocked.add(uid);
++			}
++			forceTimer();
++		    } catch (Exception g) {
++			continue;
++		    }
++		}
++	    }
++	}
++
++	private void maybeBroadcast () {
++	    boolean hasRead = false;
++	    for (Map.Entry<IPTablesInfo, Integer> entry: mPackets.entrySet()) {
++		IPTablesInfo info = entry.getKey();
++		int size = entry.getValue();
++		hasRead = true;
++		Intent broadcastIntent = new Intent();
++		broadcastIntent.setAction("uk.ac.cam.ns476.intent.action.AUDIT_PERMISSION");
++		broadcastIntent.putExtra("permission", "android.permission.INTERNET");
++		broadcastIntent.putExtra("uid", info.uid);
++		
++	 	mContext.sendBroadcast(broadcastIntent);
++	    }
++
++	    for (int mocked : mMocked) {
++		try {
++		    Log.i(TAG, "Sending mock permissions");
++		    mPM.checkUidMockPermission("android.permission.INTERNET", mocked);
++		} catch (Exception e){
++		    e.printStackTrace();
++		}
++
++	    }
++	    
++	    mMocked.clear();
++	    mPackets.clear();
++	}
++
++	private void forceTimer() {
++	    if (timerStarted) return;
++	    else {
++		timerStarted = true;
++		Timer t = new Timer();
++		t.scheduleAtFixedRate(new TimerTask() {
++			@Override
++			public void run() {
++			    synchronized (mPackets) {
++				maybeBroadcast();
++			    }
++			}
++		    }, 1000, 1000);
++	    }
++	}
++
++	
++
++	public void run() {
++	    try {
++		init();
++	    } catch (FileNotFoundException e) {
++		Log.i(TAG, "File not found. Set up the kernel buffer correctly!");
++	    }
++	    try {
++		while (true) {
++		    if (!handleNext()) {
++			break;
++		    }
++		}
++	    } catch (Exception f) {f.printStackTrace();}
++	}
++    }
++}
+\ No newline at end of file
+diff --git a/services/java/com/android/server/SystemServer.java b/services/java/com/android/server/SystemServer.java
+index 9d5d035..439c467 100644
+--- a/services/java/com/android/server/SystemServer.java
++++ b/services/java/com/android/server/SystemServer.java
+@@ -20,7 +20,6 @@ import com.android.server.am.ActivityManagerService;
+ import com.android.server.status.StatusBarService;
+ import com.android.internal.os.BinderInternal;
+ import com.android.internal.os.SamplingProfilerIntegration;
+-
+ import dalvik.system.VMRuntime;
+ import dalvik.system.Zygote;
+ 
+@@ -416,6 +415,13 @@ class ServerThread extends Thread {
+             } catch (Throwable e) {
+                 Slog.e(TAG, "Failure starting DiskStats Service", e);
+             }
++
++	    try {
++		Slog.i(TAG, "IPTables Reader Service");
++		new IPTablesReaderService(context);
++	    } catch (Throwable e) {
++		Slog.e(TAG, "Failure starting IPTables Reader Service");
++	    }
+         }
+ 
+         // make sure the ADB_ENABLED setting value matches the secure property value
+-- 
+1.7.0.4
+

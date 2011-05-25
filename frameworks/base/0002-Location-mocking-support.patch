@@ -1,0 +1,193 @@
+From ac08b4e8b56b0c2a23feb59fae65eb490272d20c Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Thu, 29 Jul 2010 17:21:46 +0100
+Subject: [PATCH 02/12] Location mocking support
+
+Change-Id: I1b36cd6f733189cd91e2967804141de738cb482e
+---
+ .../java/android/location/ILocationManager.aidl    |    1 +
+ .../java/android/location/LocationManager.java     |   39 +++++++++++++++++++-
+ .../com/android/server/LocationManagerService.java |   22 ++++++++++--
+ 3 files changed, 58 insertions(+), 4 deletions(-)
+
+diff --git a/location/java/android/location/ILocationManager.aidl b/location/java/android/location/ILocationManager.aidl
+index 2c0399e..69327cc 100644
+--- a/location/java/android/location/ILocationManager.aidl
++++ b/location/java/android/location/ILocationManager.aidl
+@@ -84,4 +84,5 @@ interface ILocationManager
+ 
+     // for NI support
+     boolean sendNiResponse(int notifId, int userResponse);
++    boolean checkMock(String providerName);
+ }
+diff --git a/location/java/android/location/LocationManager.java b/location/java/android/location/LocationManager.java
+index 9e4a16b..7199596 100644
+--- a/location/java/android/location/LocationManager.java
++++ b/location/java/android/location/LocationManager.java
+@@ -691,9 +691,22 @@ public class LocationManager {
+         _requestLocationUpdates(provider, minTime, minDistance, listener, looper);
+     }
+ 
++    private boolean checkMock(String provider) {
++	Log.i(TAG, "checking mock..");
++	try {
++	    return mService.checkMock(provider);
++	} catch (RemoteException e) {
++	    Log.e(TAG, "error checking whether to mock a provider, how strange..");
++	    return false;
++	}
++    }
++
+     private void _requestLocationUpdates(String provider,
+         long minTime, float minDistance, LocationListener listener,
+         Looper looper) {
++	if (checkMock(provider)) {
++	    return;
++	}
+         if (minTime < 0L) {
+             minTime = 0L;
+         }
+@@ -773,6 +786,10 @@ public class LocationManager {
+ 
+     private void _requestLocationUpdates(String provider,
+             long minTime, float minDistance, PendingIntent intent) {
++	if (checkMock(provider)) {
++	    Log.i(TAG, "Mocking updates");
++	    return;
++	}
+         if (minTime < 0L) {
+             minTime = 0L;
+         }
+@@ -879,6 +896,10 @@ public class LocationManager {
+      */
+     public void addProximityAlert(double latitude, double longitude,
+         float radius, long expiration, PendingIntent intent) {
++	// Treat this as mocking GPS, seems sensible for now..
++	if (checkMock(LocationManager.GPS_PROVIDER)) {
++	    return;
++	}
+         if (false) {
+             Log.d(TAG, "addProximityAlert: latitude = " + latitude +
+                 ", longitude = " + longitude + ", radius = " + radius +
+@@ -952,6 +973,10 @@ public class LocationManager {
+         if (provider == null) {
+             throw new IllegalArgumentException("provider==null");
+         }
++	if (checkMock(provider)) {
++	    // TODO: Not the right thing to do at all
++	    return null;
++	}
+         try {
+             return mService.getLastKnownLocation(provider);
+         } catch (RemoteException ex) {
+@@ -1246,6 +1271,9 @@ public class LocationManager {
+      * @throws SecurityException if the ACCESS_FINE_LOCATION permission is not present
+      */
+     public boolean addGpsStatusListener(GpsStatus.Listener listener) {
++	if (checkMock(LocationManager.GPS_PROVIDER)) {
++	    return true;
++	}
+         boolean result;
+ 
+         if (mGpsStatusListeners.get(listener) != null) {
+@@ -1292,6 +1320,9 @@ public class LocationManager {
+      * @throws SecurityException if the ACCESS_FINE_LOCATION permission is not present
+      */
+     public boolean addNmeaListener(GpsStatus.NmeaListener listener) {
++	if (checkMock(LocationManager.GPS_PROVIDER)) {
++	    return true;
++	}
+         boolean result;
+ 
+         if (mNmeaListeners.get(listener) != null) {
+@@ -1340,6 +1371,10 @@ public class LocationManager {
+      * @return status object containing updated GPS status.
+      */
+     public GpsStatus getGpsStatus(GpsStatus status) {
++	if (checkMock(LocationManager.GPS_PROVIDER)) {
++	    Log.i(TAG, "mocking GPS");
++	    return new GpsStatus();
++	}
+         if (status == null) {
+             status = new GpsStatus();
+        }
+@@ -1359,6 +1394,9 @@ public class LocationManager {
+      * @return true if the command succeeds.
+      */
+     public boolean sendExtraCommand(String provider, String command, Bundle extras) {
++	if (checkMock(provider)) {
++	    return true;
++	}
+         try {
+             return mService.sendExtraCommand(provider, command, extras);
+         } catch (RemoteException e) {
+@@ -1381,5 +1419,4 @@ public class LocationManager {
+             return false;
+         }
+     }
+- 
+ }
+diff --git a/services/java/com/android/server/LocationManagerService.java b/services/java/com/android/server/LocationManagerService.java
+index 65f4194..f80a204 100644
+--- a/services/java/com/android/server/LocationManagerService.java
++++ b/services/java/com/android/server/LocationManagerService.java
+@@ -566,6 +566,20 @@ public class LocationManagerService extends ILocationManager.Stub implements Run
+         }
+     }
+ 
++    public boolean checkMock(String provider) {
++	if ((LocationManager.GPS_PROVIDER.equals(provider)
++	     || LocationManager.PASSIVE_PROVIDER.equals(provider))
++	    && mContext.checkCallingOrSelfMockPermission(ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_MOCKED) {
++	    return true;
++	}
++	if (LocationManager.NETWORK_PROVIDER.equals(provider)
++	    && mContext.checkCallingOrSelfMockPermission(ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_MOCKED) {
++	    return true;
++	}
++	
++	return false;
++    }
++
+     private boolean isAllowedProviderSafe(String provider) {
+         if ((LocationManager.GPS_PROVIDER.equals(provider)
+                 || LocationManager.PASSIVE_PROVIDER.equals(provider))
+@@ -801,6 +815,7 @@ public class LocationManagerService extends ILocationManager.Stub implements Run
+     }
+ 
+     private boolean providerHasListener(String provider, int uid, Receiver excludedReceiver) {
++
+         ArrayList<UpdateRecord> records = mRecordsByProvider.get(provider);
+         if (records != null) {
+             for (int i = records.size() - 1; i >= 0; i--) {
+@@ -820,8 +835,7 @@ public class LocationManagerService extends ILocationManager.Stub implements Run
+ 
+     public void requestLocationUpdates(String provider,
+         long minTime, float minDistance, ILocationListener listener) {
+-
+-        try {
++	try {
+             synchronized (mLock) {
+                 requestLocationUpdatesLocked(provider, minTime, minDistance, getReceiver(listener));
+             }
+@@ -856,6 +870,8 @@ public class LocationManagerService extends ILocationManager.Stub implements Run
+         }
+ 
+         LocationProviderInterface p = mProvidersByName.get(provider);
++	Slog.i(TAG, "requesting location updates from " + provider);
++	
+         if (p == null) {
+             throw new IllegalArgumentException("provider=" + provider);
+         }
+@@ -876,7 +892,7 @@ public class LocationManagerService extends ILocationManager.Stub implements Run
+             if (newUid) {
+                 p.addListener(callingUid);
+             }
+-
++	    
+             boolean isProviderEnabled = isAllowedBySettingsLocked(provider);
+             if (isProviderEnabled) {
+                 long minTimeForProvider = getMinTimeLocked(provider);
+-- 
+1.7.0.4
+

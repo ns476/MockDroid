@@ -1,0 +1,223 @@
+From 3dec48eb6ab95420f3bd7be0502348ae453dc07f Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Fri, 13 Aug 2010 13:22:49 +0100
+Subject: [PATCH 1/2] Add mocking support to calendar
+
+Change-Id: I65af7e783dcda4216679724943c43917fa83a335
+---
+ .../providers/calendar/CalendarDatabaseHelper.java |   36 +++++++++++--
+ .../providers/calendar/CalendarProvider2.java      |   57 ++++++++++++++++++-
+ .../providers/calendar/SQLiteContentProvider.java  |    2 +
+ 3 files changed, 87 insertions(+), 8 deletions(-)
+
+diff --git a/src/com/android/providers/calendar/CalendarDatabaseHelper.java b/src/com/android/providers/calendar/CalendarDatabaseHelper.java
+index b38831b..3a2f2e3 100644
+--- a/src/com/android/providers/calendar/CalendarDatabaseHelper.java
++++ b/src/com/android/providers/calendar/CalendarDatabaseHelper.java
+@@ -24,6 +24,7 @@ import android.accounts.Account;
+ import android.content.ContentResolver;
+ import android.content.ContentValues;
+ import android.content.Context;
++import android.content.pm.PackageManager;
+ import android.content.res.Resources;
+ import android.database.Cursor;
+ import android.database.DatabaseUtils;
+@@ -49,6 +50,7 @@ import java.net.URLDecoder;
+     private static final String TAG = "CalendarDatabaseHelper";
+ 
+     private static final String DATABASE_NAME = "calendar.db";
++    private static final String MOCK_DATABASE_NAME = "calendar_mock.db";
+ 
+     private static final int DAY_IN_SECONDS = 24 * 60 * 60;
+ 
+@@ -71,6 +73,7 @@ import java.net.URLDecoder;
+     private final SyncStateContentProviderHelper mSyncState;
+ 
+     private static CalendarDatabaseHelper sSingleton = null;
++    private static CalendarDatabaseHelper sMockSingleton = null;
+ 
+     private DatabaseUtils.InsertHelper mCalendarsInserter;
+     private DatabaseUtils.InsertHelper mEventsInserter;
+@@ -128,17 +131,28 @@ import java.net.URLDecoder;
+         return sSingleton;
+     }
+ 
++    public static synchronized CalendarDatabaseHelper getMockInstance(Context context) {
++	if (sMockSingleton == null) {
++	    sMockSingleton = new CalendarDatabaseHelper(context, MOCK_DATABASE_NAME);
++	}
++	return sMockSingleton;
++    }
++
+     /**
+      * Private constructor, callers except unit tests should obtain an instance through
+      * {@link #getInstance(android.content.Context)} instead.
+      */
+     /* package */ CalendarDatabaseHelper(Context context) {
+-        super(context, DATABASE_NAME, null, DATABASE_VERSION);
+-        if (false) Log.i(TAG, "Creating OpenHelper");
+-        Resources resources = context.getResources();
++	this(context, DATABASE_NAME);
++    }
++
++    CalendarDatabaseHelper(Context context, String dbName) {
++	super(context, dbName, null, DATABASE_VERSION);
++
++	Resources resources = context.getResources();
+ 
+-        mContext = context;
+-        mSyncState = new SyncStateContentProviderHelper();
++	mContext = context;
++	mSyncState = new SyncStateContentProviderHelper();
+     }
+ 
+     @Override
+@@ -175,6 +189,18 @@ import java.net.URLDecoder;
+                  + " FROM " + SYNC_STATE_META_TABLE,
+                  null);
+         if (version == PRE_FROYO_SYNC_STATE_VERSION) {
++
++
++
++
++
++
++
++
++
++
++
++
+             Log.i(TAG, "Upgrading calendar sync state table");
+             db.execSQL("CREATE TEMPORARY TABLE state_backup(_sync_account TEXT, "
+                     + "_sync_account_type TEXT, data TEXT);");
+diff --git a/src/com/android/providers/calendar/CalendarProvider2.java b/src/com/android/providers/calendar/CalendarProvider2.java
+index a50f903..8894719 100644
+--- a/src/com/android/providers/calendar/CalendarProvider2.java
++++ b/src/com/android/providers/calendar/CalendarProvider2.java
+@@ -30,6 +30,7 @@ import android.content.Context;
+ import android.content.Intent;
+ import android.content.IntentFilter;
+ import android.content.UriMatcher;
++import android.content.pm.PackageManager;
+ import android.database.Cursor;
+ import android.database.DatabaseUtils;
+ import android.database.SQLException;
+@@ -129,6 +130,7 @@ public class CalendarProvider2 extends SQLiteContentProvider implements OnAccoun
+     CalendarCache mCalendarCache;
+ 
+     private CalendarDatabaseHelper mDbHelper;
++    private CalendarDatabaseHelper mMockDbHelper;
+ 
+     private static final Uri SYNCSTATE_CONTENT_URI =
+             Uri.parse("content://syncstate/state");
+@@ -325,11 +327,15 @@ public class CalendarProvider2 extends SQLiteContentProvider implements OnAccoun
+         return CalendarDatabaseHelper.getInstance(context);
+     }
+ 
++    protected CalendarDatabaseHelper getMockDatabaseHelper(final Context context) {
++        return CalendarDatabaseHelper.getMockInstance(context);
++    } 
++
+     @Override
+     public boolean onCreate() {
+         super.onCreate();
+         mDbHelper = (CalendarDatabaseHelper)getDatabaseHelper();
+-
++	mMockDbHelper = (CalendarDatabaseHelper) getMockDatabaseHelper(getContext());
+         verifyAccounts();
+ 
+         // Register for Intent broadcasts
+@@ -596,7 +602,16 @@ public class CalendarProvider2 extends SQLiteContentProvider implements OnAccoun
+             Log.v(TAG, "query uri - " + uri);
+         }
+ 
+-        final SQLiteDatabase db = mDbHelper.getReadableDatabase();
++	final SQLiteDatabase db;
++	final CalendarDatabaseHelper helper;
++	
++	if (getContext().checkCallingOrSelfMockPermission("android.permission.READ_CALENDAR") == PackageManager.PERMISSION_MOCKED) {
++	    db = mMockDbHelper.getReadableDatabase();
++	    helper = mMockDbHelper;
++	} else {
++	    db = mDbHelper.getReadableDatabase();
++	    helper = mDbHelper;
++	}
+ 
+         SQLiteQueryBuilder qb = new SQLiteQueryBuilder();
+         String groupBy = null;
+@@ -605,7 +620,7 @@ public class CalendarProvider2 extends SQLiteContentProvider implements OnAccoun
+         final int match = sUriMatcher.match(uri);
+         switch (match) {
+             case SYNCSTATE:
+-                return mDbHelper.getSyncState().query(db, projection, selection,  selectionArgs,
++                return helper.getSyncState().query(db, projection, selection,  selectionArgs,
+                         sortOrder);
+ 
+             case EVENTS:
+@@ -731,6 +746,42 @@ public class CalendarProvider2 extends SQLiteContentProvider implements OnAccoun
+         return query(db, qb, projection, selection, selectionArgs, sortOrder, groupBy, limit);
+     }
+ 
++    @Override
++    public Uri insert(Uri uri, ContentValues values) {
++	if (getContext().checkCallingOrSelfPermission("android.permission.WRITE_CALENDAR") == PackageManager.PERMISSION_MOCKED) {
++	    return null;
++	} else {
++	    return super.insert(uri, values);
++	}
++    }
++
++    @Override
++    public int bulkInsert(Uri uri, ContentValues[] values) {
++	if (getContext().checkCallingOrSelfPermission("android.permission.WRITE_CALENDAR") == PackageManager.PERMISSION_MOCKED) {
++	    return 1;
++	} else {
++	    return super.bulkInsert(uri, values);
++	}
++    }
++
++    @Override
++    public int update(Uri uri, ContentValues values, String selection, String[] selectionArgs) {
++	if (getContext().checkCallingOrSelfPermission("android.permission.WRITE_CALENDAR") == PackageManager.PERMISSION_MOCKED) {
++	    return 1;
++	} else {
++	    return super.update(uri, values, selection, selectionArgs);
++	}
++    }
++
++    @Override
++    public int delete(Uri uri, String selection, String[] selectionArgs) {
++	if (getContext().checkCallingOrSelfPermission("android.permission.WRITE_CALENDAR") == PackageManager.PERMISSION_MOCKED) {
++	    return 1;
++	} else {
++	    return super.delete(uri, selection, selectionArgs);
++	}
++    }
++
+     private Cursor query(final SQLiteDatabase db, SQLiteQueryBuilder qb, String[] projection,
+             String selection, String[] selectionArgs, String sortOrder, String groupBy,
+             String limit) {
+diff --git a/src/com/android/providers/calendar/SQLiteContentProvider.java b/src/com/android/providers/calendar/SQLiteContentProvider.java
+index 6dedddb..7cfb51e 100644
+--- a/src/com/android/providers/calendar/SQLiteContentProvider.java
++++ b/src/com/android/providers/calendar/SQLiteContentProvider.java
+@@ -26,6 +26,7 @@ import android.database.sqlite.SQLiteDatabase;
+ import android.database.sqlite.SQLiteOpenHelper;
+ import android.database.sqlite.SQLiteTransactionListener;
+ import android.net.Uri;
++import android.util.Log;
+ 
+ import java.util.ArrayList;
+ 
+@@ -186,6 +187,7 @@ public abstract class SQLiteContentProvider extends ContentProvider
+     @Override
+     public ContentProviderResult[] applyBatch(ArrayList<ContentProviderOperation> operations)
+             throws OperationApplicationException {
++	Log.i("PROV", "Applying shizzle");
+         mDb = mOpenHelper.getWritableDatabase();
+         mDb.beginTransactionWithListener(this);
+         try {
+-- 
+1.7.0.4
+

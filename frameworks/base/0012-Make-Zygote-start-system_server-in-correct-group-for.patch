@@ -1,0 +1,26 @@
+From 7574b94952559c7be8bc6a2a54f2f1b9131aae6a Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Wed, 13 Oct 2010 01:52:37 +0100
+Subject: [PATCH 12/12] Make Zygote start system_server in correct group for mocking
+
+Change-Id: I0537ffaea1d43a35e0f52a15ef49f4d0e286df6e
+---
+ core/java/com/android/internal/os/ZygoteInit.java |    2 +-
+ 1 files changed, 1 insertions(+), 1 deletions(-)
+
+diff --git a/core/java/com/android/internal/os/ZygoteInit.java b/core/java/com/android/internal/os/ZygoteInit.java
+index b677b1e..a8dca80 100644
+--- a/core/java/com/android/internal/os/ZygoteInit.java
++++ b/core/java/com/android/internal/os/ZygoteInit.java
+@@ -540,7 +540,7 @@ public class ZygoteInit {
+         String args[] = {
+             "--setuid=1000",
+             "--setgid=1000",
+-            "--setgroups=1001,1002,1003,1004,1005,1006,1007,1008,1009,1010,3001,3002,3003",
++            "--setgroups=1001,1002,1003,1004,1005,1006,1007,1008,1009,1010,3001,3002,3003,8999",
+             "--capabilities=130104352,130104352",
+             "--runtime-init",
+             "--nice-name=system_server",
+-- 
+1.7.0.4
+

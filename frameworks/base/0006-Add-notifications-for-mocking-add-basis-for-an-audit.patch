@@ -1,0 +1,472 @@
+From 4032b34abae07c24ccb18b68dae292abfc8fd3d0 Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Thu, 16 Sep 2010 15:22:23 +0100
+Subject: [PATCH 06/12] Add notifications for mocking; add basis for an audit framework
+
+Change-Id: I2579f87d567252241a24d70c77e02b5e5ba2657d
+---
+ core/java/android/content/ContextWrapper.java      |    8 +-
+ core/res/AndroidManifest.xml                       |   28 +++++
+ core/res/res/values/strings.xml                    |    6 +
+ data/etc/platform.xml                              |    5 +
+ .../com/android/server/PackageManagerService.java  |  128 +++++++++++++++++---
+ .../android/server/am/ActivityManagerService.java  |   32 +++++-
+ 6 files changed, 187 insertions(+), 20 deletions(-)
+
+diff --git a/core/java/android/content/ContextWrapper.java b/core/java/android/content/ContextWrapper.java
+index ed5ba61..a3f9c1c 100644
+--- a/core/java/android/content/ContextWrapper.java
++++ b/core/java/android/content/ContextWrapper.java
+@@ -367,7 +367,9 @@ public class ContextWrapper extends Context {
+     public int checkPermission(String permission, int pid, int uid) {
+         return mBase.checkPermission(permission, pid, uid);
+     }
+-
++    /**
++     * @hide
++     */
+     @Override
+     public int checkMockPermission(String permission, int pid, int uid) {
+ 	return mBase.checkMockPermission(permission, pid, uid);
+@@ -382,7 +384,9 @@ public class ContextWrapper extends Context {
+     public int checkCallingOrSelfPermission(String permission) {
+         return mBase.checkCallingOrSelfPermission(permission);
+     }
+-    
++    /**
++     * @hide
++     */
+     @Override
+     public int checkCallingOrSelfMockPermission(String permission) {
+ 	return mBase.checkCallingOrSelfMockPermission(permission);
+diff --git a/core/res/AndroidManifest.xml b/core/res/AndroidManifest.xml
+index 2a2208f..641e175 100644
+--- a/core/res/AndroidManifest.xml
++++ b/core/res/AndroidManifest.xml
+@@ -80,6 +80,16 @@
+     <protected-broadcast android:name="android.bluetooth.device.action.PAIRING_REQUEST" />
+     <protected-broadcast android:name="android.bluetooth.device.action.PAIRING_CANCEL" />
+ 
++    <!-- Broadcast whenever an application tries to do something that is mocked
++	 @hide -->
++
++    <protected-broadcast android:name="uk.ac.cam.ns476.intent.action.MOCKED" />
++
++    <!-- Broadcast whenever an application does something audit-worthy
++	 @hide -->
++    
++    <protected-broadcast android:name="uk.ac.cam.ns476.intent.action.AUDIT_PERMISSION" />
++
+     <!-- ====================================== -->
+     <!-- Permissions for things that cost money -->
+     <!-- ====================================== -->
+@@ -627,6 +637,24 @@
+         android:label="@string/permlab_getPackageSize"
+         android:description="@string/permdesc_getPackageSize" />
+ 
++    <!-- Allows an application to read and write mock permissions.
++	 @hide
++      -->
++    <permission android:name="uk.ac.cam.ns476.permission.MOCK"
++		android:permissionGroup="android.permission-group.SYSTEM_TOOLS"
++		android:protectionLevel="dangerous"
++		android:label="@string/permlab_mockPermissions"
++		android:description="@string/permdesc_mockPermissions" />
++
++    <!-- Allows an application to audit other applications.
++	 @hide
++	 -->
++    <permission android:name="uk.ac.cam.ns476.permission.AUDIT"
++		android:permissionGroup="android.permission-group.SYSTEM_TOOLS"
++		android:protectionLevel="dangerous"
++		android:label="@string/permlab_audit"
++		android:description="@string/permdesc_audit" />
++
+     <!-- @deprecated No longer useful, see
+          {@link android.content.pm.PackageManager#addPackageToPreferred}
+          for details. -->
+diff --git a/core/res/res/values/strings.xml b/core/res/res/values/strings.xml
+index 1e007d3..4dc7174 100644
+--- a/core/res/res/values/strings.xml
++++ b/core/res/res/values/strings.xml
+@@ -679,6 +679,12 @@
+     <string name="permdesc_getPackageSize">Allows an application to retrieve
+         its code, data, and cache sizes</string>
+ 
++    <string name="permlab_mockPermissions">mock permissions for applications</string>
++    <string name="permdesc_mockPermissions">Allows an application to read and write mock permissions for other applications</string>
++
++    <string name="permlab_audit">audit other applications</string>
++    <string name="permdesc_audit">Allows an application to view other applications\' permission usage</string>
++
+     <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+     <string name="permlab_installPackages">directly install applications</string>
+     <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+diff --git a/data/etc/platform.xml b/data/etc/platform.xml
+index 7322e6c..6fe5145 100644
+--- a/data/etc/platform.xml
++++ b/data/etc/platform.xml
+@@ -72,6 +72,11 @@
+         <group gid="diag" />
+     </permission>
+ 
++    <!-- Allowed to read and write mock permissions for apps -->
++    <permission name="uk.ac.cam.ns476.permission.MOCK">
++      <group gid="mock" />
++    </permission>
++
+     <!-- ================================================================== -->
+     <!-- ================================================================== -->
+     <!-- ================================================================== -->
+diff --git a/services/java/com/android/server/PackageManagerService.java b/services/java/com/android/server/PackageManagerService.java
+index d828e5e..a3c8757 100644
+--- a/services/java/com/android/server/PackageManagerService.java
++++ b/services/java/com/android/server/PackageManagerService.java
+@@ -116,6 +116,8 @@ import java.util.Iterator;
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
++import java.util.Timer;
++import java.util.TimerTask;
+ import java.util.zip.ZipEntry;
+ import java.util.zip.ZipException;
+ import java.util.zip.ZipFile;
+@@ -214,6 +216,9 @@ class PackageManagerService extends IPackageManager.Stub {
+     // This is the object monitoring mAppInstallDir.
+     final FileObserver mAppInstallObserver;
+ 
++    // This is the object monitoring the mock permissions directory
++    final FileObserver mMockPermissionsObserver;
++
+     // This is the object monitoring mDrmAppPrivateInstallDir.
+     final FileObserver mDrmAppInstallObserver;
+ 
+@@ -224,6 +229,7 @@ class PackageManagerService extends IPackageManager.Stub {
+     final File mFrameworkDir;
+     final File mSystemAppDir;
+     final File mAppInstallDir;
++    final File mMockPermissionsDir;
+     final File mDalvikCacheDir;
+ 
+     // Directory containing the private parts (e.g. code and non-resource assets) of forward-locked
+@@ -965,9 +971,13 @@ class PackageManagerService extends IPackageManager.Stub {
+                 mAppInstallDir.getPath(), OBSERVER_EVENTS, false);
+             mAppInstallObserver.startWatching();
+             scanDirLI(mAppInstallDir, 0, scanMode);
+-
++	    
++	    mMockPermissionsDir = new File(Environment.getRootDirectory(), "etc/permissions/mock");
+ 	    readMockPermissions();
+ 
++	    mMockPermissionsObserver = new MockPermissionsObserver(mMockPermissionsDir.getPath());
++	    mMockPermissionsObserver.startWatching();
++
+             mDrmAppInstallObserver = new AppDirObserver(
+                 mDrmAppPrivateInstallDir.getPath(), OBSERVER_EVENTS, false);
+             mDrmAppInstallObserver.startWatching();
+@@ -1106,20 +1116,21 @@ class PackageManagerService extends IPackageManager.Stub {
+     }
+ 
+     void readMockPermissions() {
+-	File mockDir = new File(Environment.getRootDirectory(), "etc/permissions/mock");
+-	if (!mockDir.exists() || !mockDir.isDirectory()) {
++	if (!mMockPermissionsDir.exists() || !mMockPermissionsDir.isDirectory()) {
+ 	    Slog.w(TAG, "Mock directory doesn't exist, skipping..");
+ 	    return;
+ 	}
+ 		
+-	if(!mockDir.canRead()) {
++	if(!mMockPermissionsDir.canRead()) {
+ 	    Slog.w(TAG, "Mock directory can't be read");
++	    return;
+ 	}
+ 	HashMap<String, ArrayList<String>> mocks = new HashMap<String, ArrayList<String>>();
+-	for(File mock: mockDir.listFiles()) {
++	for(File mock: mMockPermissionsDir.listFiles()) {
+ 	    String pkgName = mock.getName();
+ 	    ArrayList<String> perms = new ArrayList<String>(0);
+ 	    try {
++		boolean needsRestart = false;
+ 		BufferedReader br = new BufferedReader(new FileReader(mock));
+ 		String line;
+ 		while ((line = br.readLine()) != null) {
+@@ -1127,14 +1138,13 @@ class PackageManagerService extends IPackageManager.Stub {
+ 			perms.add(line);
+ 		    }
+ 		}
+-
++		
+ 		mocks.put(pkgName, perms);
+-
+ 	    } catch (FileNotFoundException e) {
+ 		Slog.w(TAG, "Couldn't open mock permission file");
+ 		continue;
+ 	    } catch (IOException e) {
+-		Slog.w(TAG, "Couldn't read mock permission");
++		Slog.w(TAG, "Couldn't read mock permission");	    
+ 	    }
+ 	}
+ 	
+@@ -1142,32 +1152,63 @@ class PackageManagerService extends IPackageManager.Stub {
+ 
+ 	for(Map.Entry<String, ArrayList<String>> e: mocks.entrySet()) {
+ 	    String name = e.getKey();
++	    boolean mockingInternetBefore = false;
++	    boolean mockingInternetAfter = false;
++
+ 	    Slog.i(TAG, "Adding mock permissions for " + name);
+ 	    ArrayList<String> perms = e.getValue();
++
+ 	    PackageParser.Package pkg = mPackages.get(name);
++	    
+ 	    if (pkg == null) {
+ 		Slog.w(TAG, "Package " + name +" is not installed, skipping..");
+ 		continue;
+ 	    }
++
++	    if (pkg.mockedPermissions.contains("android.permission.INTERNET")) {
++		mockingInternetBefore = true;
++	    }
++	    
++	    pkg.mockedPermissions.clear();
++
+ 	    for (String perm: perms) {
+ 		Slog.i(TAG, "Mocking permission " + perm);
+-		if (perm.equals("android.permissions.INTERNET")) {
++		if (perm.equals("android.permission.INTERNET")) {
+                    PackageSetting ps = (PackageSetting) pkg.mExtras;
+                    if (ps.sharedUser != null) {
+                        ps.sharedUser.gids = appendInt(ps.sharedUser.gids, Process.getGidForName("mock_inet"));
+                    } else {
+                        ps.gids = appendInt(ps.gids, Process.getGidForName("mock_inet"));
+                    }
++
++		   if (!mockingInternetBefore) {
++		       Log.i(TAG, "Killing " + pkg.packageName);
++		       killApplication(pkg.packageName, getPackageUid(pkg.packageName));
++		   }
++		   mockingInternetAfter = true;
++		}
++		pkg.mockedPermissions.add(perm);
++	    }
++	    if (mockingInternetBefore && !mockingInternetAfter) {
++		killApplication(pkg.packageName, getPackageUid(pkg.packageName));
++		PackageSetting ps = (PackageSetting) pkg.mExtras;
++		if (ps.sharedUser != null) {
++		    ps.sharedUser.gids = removeInt(ps.sharedUser.gids, Process.getGidForName("mock_inet"));
+ 		} else {
+-		    pkg.mockedPermissions.add(perm);
++		    ps.gids = removeInt(ps.gids, Process.getGidForName("mock_inet"));
+ 		}
+ 	    }
+ 	}
++
++
+ 	Slog.i(TAG, "Finished reading mock permissions");
+-	/*for(Map.Entry<String, PackageParser.Package> pkg: mPackages.entrySet()) {
+-	    String name = pkg.getKey();
+-	    Slog.i(TAG, "Have pkg: " + name);
+-	    }*/
++    }
++    private void clearMockPermissions() {
++	Slog.i(TAG, "Clearing mock permissions..");
++	for(Map.Entry<String, PackageParser.Package> e: mPackages.entrySet()) {
++	    PackageParser.Package pkg = e.getValue();
++	    pkg.mockedPermissions.clear();
++	}
+     }
+ 
+     private void readPermissionsFromXml(File permFile) {
+@@ -1739,13 +1780,14 @@ class PackageManagerService extends IPackageManager.Stub {
+     }
+ 
+     public int checkUidPermission(String permName, int uid) {
++	broadcastAudit(permName, uid);
+         synchronized (mPackages) {
+             Object obj = mSettings.getUserIdLP(uid);
+             if (obj != null) {
+                 GrantedPermissions gp = (GrantedPermissions)obj;
+                 if (gp.grantedPermissions.contains(permName)) {
+                     return PackageManager.PERMISSION_GRANTED;
+-                }
++		}
+             } else {
+                 HashSet<String> perms = mSystemPermissions.get(uid);
+                 if (perms != null && perms.contains(permName)) {
+@@ -1756,17 +1798,41 @@ class PackageManagerService extends IPackageManager.Stub {
+         return PackageManager.PERMISSION_DENIED;
+     }
+ 
++    private void broadcastAudit(String permName, int uid) {
++	Intent broadcastIntent = new Intent();
++	broadcastIntent.setAction("uk.ac.cam.ns476.intent.action.AUDIT_PERMISSION");
++	broadcastIntent.putExtra("permission", permName);
++	broadcastIntent.putExtra("uid", uid);
++	mContext.sendBroadcast(broadcastIntent, "uk.ac.cam.ns476.permission.AUDIT");
++    }
++
+     public int checkUidMockPermission(String permName, int uid) {
++	int ret = PackageManager.PERMISSION_NORMAL;
++	String mockedPkg = null;
++	Log.i(TAG, "Permission " + permName);
+ 	synchronized (mPackages) {
+ 	    final String[] pkgs = getPackagesForUid(uid);
+ 	    for (String pkg: pkgs) {
+ 		if(mPackages.containsKey(pkg) &&
+ 		   mPackages.get(pkg).mockedPermissions.contains(permName)) {
+-		    return PackageManager.PERMISSION_MOCKED;
++		    mockedPkg = pkg;
++		    ret = PackageManager.PERMISSION_MOCKED;
+ 		}
+ 	    }
+ 	}
+-	return PackageManager.PERMISSION_NORMAL;
++	if (ret == PackageManager.PERMISSION_MOCKED) {
++	    broadcastMocked(mockedPkg, permName);
++	}
++
++	return ret;
++    }
++
++    private void broadcastMocked(String mockedPackage, String permName) {
++	Intent broadcastIntent = new Intent();
++	broadcastIntent.setAction("uk.ac.cam.ns476.intent.action.MOCKED");	
++	broadcastIntent.putExtra("permission", permName);
++	broadcastIntent.putExtra("packageName", mockedPackage);
++	mContext.sendBroadcast(broadcastIntent, "uk.ac.cam.ns476.permission.MOCK");
+     }
+ 
+     private BasePermission findPermissionTreeLP(String permName) {
+@@ -4702,6 +4768,34 @@ class PackageManagerService extends IPackageManager.Stub {
+             }
+         }
+     }
++
++    private final class MockPermissionsObserver extends FileObserver {
++	Timer pending;
++	public MockPermissionsObserver(String path) {
++	    super(path, FileObserver.CREATE |
++		  FileObserver.MODIFY |
++		  FileObserver.DELETE |
++		  FileObserver.MOVED_TO);
++	}
++
++	@Override
++	public void onEvent(int event, String path) {
++	    TimerTask t = new TimerTask() {
++		    @Override
++		    public void run() {
++			synchronized (mPackages) {
++			    readMockPermissions();
++			}
++		    }
++		};
++	    if (pending != null) {
++		pending.cancel();
++	    }
++	    pending = new Timer("mockPermissionsTimer");
++	    Log.i(TAG, "Scheduling a mock reading..");
++	    pending.schedule(t, 1000);
++	}
++    }
+     
+     private final class AppDirObserver extends FileObserver {
+         public AppDirObserver(String path, int mask, boolean isrom) {
+diff --git a/services/java/com/android/server/am/ActivityManagerService.java b/services/java/com/android/server/am/ActivityManagerService.java
+index 179a468..982a273 100644
+--- a/services/java/com/android/server/am/ActivityManagerService.java
++++ b/services/java/com/android/server/am/ActivityManagerService.java
+@@ -6339,7 +6339,7 @@ public final class ActivityManagerService extends ActivityManagerNative implemen
+ 	    uid = tlsIdentity.uid;
+ 	    pid = tlsIdentity.pid;
+ 	}
+-	
++
+ 	try {
+ 	    return ActivityThread.getPackageManager()
+ 		.checkUidMockPermission(permission, uid);
+@@ -13013,6 +13013,8 @@ public final class ActivityManagerService extends ActivityManagerNative implemen
+         if (filter.requiredPermission != null) {
+             int perm = checkComponentPermission(filter.requiredPermission,
+                     r.callingPid, r.callingUid, -1);
++            int mock = checkComponentMockPermission(filter.requiredPermission,
++                    filter.receiverList.pid, filter.receiverList.uid, -1);
+             if (perm != PackageManager.PERMISSION_GRANTED) {
+                 Slog.w(TAG, "Permission Denial: broadcasting "
+                         + r.intent.toString()
+@@ -13022,10 +13024,18 @@ public final class ActivityManagerService extends ActivityManagerNative implemen
+                         + " due to registered receiver " + filter);
+                 skip = true;
+             }
++	    if (mock == PackageManager.PERMISSION_MOCKED) {
++		Slog.i(TAG, "Mocking permission " + r.requiredPermission + " for broadcast, not sending..");
++		skip = true;
++	    }
+         }
++
++	
+         if (r.requiredPermission != null) {
+             int perm = checkComponentPermission(r.requiredPermission,
+                     filter.receiverList.pid, filter.receiverList.uid, -1);
++            int mock = checkComponentMockPermission(r.requiredPermission,
++                    filter.receiverList.pid, filter.receiverList.uid, -1);
+             if (perm != PackageManager.PERMISSION_GRANTED) {
+                 Slog.w(TAG, "Permission Denial: receiving "
+                         + r.intent.toString()
+@@ -13037,6 +13047,10 @@ public final class ActivityManagerService extends ActivityManagerNative implemen
+                         + " (uid " + r.callingUid + ")");
+                 skip = true;
+             }
++	    if (mock == PackageManager.PERMISSION_MOCKED) {
++		Slog.i(TAG, "Mocking permission " + r.requiredPermission + " for broadcast, not sending..");
++		skip = true;
++	    }
+         }
+ 
+         if (!skip) {
+@@ -13288,6 +13302,10 @@ public final class ActivityManagerService extends ActivityManagerNative implemen
+                     r.callingPid, r.callingUid,
+                     info.activityInfo.exported
+                             ? -1 : info.activityInfo.applicationInfo.uid);
++	    int mock = checkComponentMockPermission(info.activityInfo.permission,
++                    r.callingPid, r.callingUid,
++                    info.activityInfo.exported
++                            ? -1 : info.activityInfo.applicationInfo.uid);
+             if (perm != PackageManager.PERMISSION_GRANTED) {
+                 Slog.w(TAG, "Permission Denial: broadcasting "
+                         + r.intent.toString()
+@@ -13298,12 +13316,20 @@ public final class ActivityManagerService extends ActivityManagerNative implemen
+                         + "/" + info.activityInfo.name);
+                 skip = true;
+             }
++	    if (mock == PackageManager.PERMISSION_MOCKED) {
++		Slog.i(TAG, "Skipping broadcast " + r.intent.toString() + " due to mocking..");
++		skip = true;
++	    }
++	    
+             if (r.callingUid != Process.SYSTEM_UID &&
+                 r.requiredPermission != null) {
+                 try {
+                     perm = ActivityThread.getPackageManager().
+                             checkPermission(r.requiredPermission,
+                                     info.activityInfo.applicationInfo.packageName);
++		    mock = ActivityThread.getPackageManager().
++			checkMockPermission(r.requiredPermission,
++					    info.activityInfo.applicationInfo.packageName);
+                 } catch (RemoteException e) {
+                     perm = PackageManager.PERMISSION_DENIED;
+                 }
+@@ -13316,6 +13342,10 @@ public final class ActivityManagerService extends ActivityManagerNative implemen
+                             + " (uid " + r.callingUid + ")");
+                     skip = true;
+                 }
++		
++		if (mock == PackageManager.PERMISSION_MOCKED) {
++		    skip = true;
++		}
+             }
+             if (r.curApp != null && r.curApp.crashing) {
+                 // If the target process is crashing, just skip it.
+-- 
+1.7.0.4
+

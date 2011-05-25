@@ -1,0 +1,75 @@
+From ba0b3d3ee03247d4d907658a1a793f4b17982480 Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Thu, 16 Dec 2010 14:18:56 +0000
+Subject: [PATCH] Create the /etc/permissions/mock directory
+
+Change-Id: I24c9968a987f788d654bc600aae8877fe6fa5d59
+---
+ data/mock/Android.mk    |   51 +++++++++++++++++++++++++++++++++++++++++++++++
+ 1 files changed, 51 insertions(+), 0 deletions(-)
+ create mode 100644 data/mock/Android.mk
+ create mode 100644 data/mock/DO_NOT_DELETE
+
+diff --git a/data/mock/Android.mk b/data/mock/Android.mk
+new file mode 100644
+index 0000000..58ca1b1
+--- /dev/null
++++ b/data/mock/Android.mk
+@@ -0,0 +1,51 @@
++#
++# Copyright (C) 2008 The Android Open Source Project
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#      http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++#
++
++LOCAL_PATH := $(my-dir)
++
++########################
++include $(CLEAR_VARS)
++
++LOCAL_MODULE := DO_NOT_DELETE
++
++LOCAL_MODULE_TAGS := user
++
++LOCAL_MODULE_CLASS := ETC
++
++# This will install the file in /system/etc/permissions/mock
++#
++LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)/permissions/mock
++
++LOCAL_SRC_FILES := $(LOCAL_MODULE)
++
++include $(BUILD_PREBUILT)
++
++########################
++#include $(CLEAR_VARS)
++
++#LOCAL_MODULE := required_hardware.xml
++
++#LOCAL_MODULE_TAGS := user
++
++#LOCAL_MODULE_CLASS := ETC
++
++# This will install the file in /system/etc/permissions/mock
++#
++#LOCAL_MODULE_PATH := $(TARGET_OUT_ETC)/permissions/mock
++
++#LOCAL_SRC_FILES := $(LOCAL_MODULE)
++
++#include $(BUILD_PREBUILT)
+diff --git a/data/mock/DO_NOT_DELETE b/data/mock/DO_NOT_DELETE
+new file mode 100644
+index 0000000..e69de29
+-- 
+1.7.0.4
+

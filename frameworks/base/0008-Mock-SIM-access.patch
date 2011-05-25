@@ -1,0 +1,209 @@
+From 0ff56f146c3374b41659da9e231804245e3c05fa Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Thu, 16 Sep 2010 15:57:20 +0100
+Subject: [PATCH 08/12] Mock SIM access
+
+Change-Id: I002259384ad3cd3f1b6fb2fc2a80c771faa2b1e2
+---
+ .../telephony/IccPhoneBookInterfaceManager.java    |   20 +++++++++++++++++++-
+ .../internal/telephony/IccSmsInterfaceManager.java |   15 +++++++++++++++
+ .../telephony/cdma/RuimSmsInterfaceManager.java    |   12 ++++++++++++
+ .../telephony/gsm/SimSmsInterfaceManager.java      |   11 +++++++++++
+ 4 files changed, 57 insertions(+), 1 deletions(-)
+
+diff --git a/telephony/java/com/android/internal/telephony/IccPhoneBookInterfaceManager.java b/telephony/java/com/android/internal/telephony/IccPhoneBookInterfaceManager.java
+index 2f22d74..4b25141 100644
+--- a/telephony/java/com/android/internal/telephony/IccPhoneBookInterfaceManager.java
++++ b/telephony/java/com/android/internal/telephony/IccPhoneBookInterfaceManager.java
+@@ -22,7 +22,7 @@ import android.os.Handler;
+ import android.os.Looper;
+ import android.os.Message;
+ import android.os.ServiceManager;
+-
++import java.util.ArrayList;
+ import java.util.List;
+ 
+ /**
+@@ -140,6 +140,12 @@ public abstract class IccPhoneBookInterfaceManager extends IIccPhoneBook.Stub {
+                     "Requires android.permission.WRITE_CONTACTS permission");
+         }
+ 
++	if (phone.getContext().checkCallingOrSelfMockPermission(
++		android.Manifest.permission.WRITE_CONTACTS)
++	    == PackageManager.PERMISSION_MOCKED) {
++	    return true;
++	}
++
+ 
+         if (DBG) logd("updateAdnRecordsInEfBySearch: efid=" + efid +
+                 " ("+ oldTag + "," + oldPhoneNumber + ")"+ "==>" +
+@@ -191,6 +197,12 @@ public abstract class IccPhoneBookInterfaceManager extends IIccPhoneBook.Stub {
+                     "Requires android.permission.WRITE_CONTACTS permission");
+         }
+ 
++	if (phone.getContext().checkCallingOrSelfMockPermission(
++		android.Manifest.permission.WRITE_CONTACTS)
++       	        == PackageManager.PERMISSION_MOCKED) {
++	    return true;
++	}
++
+         if (DBG) logd("updateAdnRecordsInEfByIndex: efid=" + efid +
+                 " Index=" + index + " ==> " +
+                 "("+ newTag + "," + newPhoneNumber + ")"+ " pin2=" + pin2);
+@@ -238,6 +250,12 @@ public abstract class IccPhoneBookInterfaceManager extends IIccPhoneBook.Stub {
+                     "Requires android.permission.READ_CONTACTS permission");
+         }
+ 
++	if (phone.getContext().checkCallingOrSelfMockPermission(
++		android.Manifest.permission.READ_CONTACTS)
++	    == PackageManager.PERMISSION_MOCKED) {
++	    return new ArrayList<AdnRecord>();
++	}
++
+         efid = updateEfForIccType(efid);
+         if (DBG) logd("getAdnRecordsInEF: efid=" + efid);
+ 
+diff --git a/telephony/java/com/android/internal/telephony/IccSmsInterfaceManager.java b/telephony/java/com/android/internal/telephony/IccSmsInterfaceManager.java
+index 8a5a6ae..76fc1c2 100644
+--- a/telephony/java/com/android/internal/telephony/IccSmsInterfaceManager.java
++++ b/telephony/java/com/android/internal/telephony/IccSmsInterfaceManager.java
+@@ -18,6 +18,7 @@ package com.android.internal.telephony;
+ 
+ import android.app.PendingIntent;
+ import android.content.Context;
++import android.content.pm.PackageManager;
+ import android.util.Log;
+ 
+ import com.android.internal.util.HexDump;
+@@ -48,6 +49,11 @@ public abstract class IccSmsInterfaceManager extends ISms.Stub {
+                 "android.permission.SEND_SMS", message);
+     }
+ 
++    protected boolean mockReceiveOrSend() {
++	return mContext.checkCallingOrSelfMockPermission("android.permission.RECEIVE_SMS") == PackageManager.PERMISSION_MOCKED ||
++	    mContext.checkCallingOrSelfMockPermission("android.permission.SEND_SMS") == PackageManager.PERMISSION_MOCKED;
++    }
++
+     /**
+      * Send a data based SMS to a specific application port.
+      *
+@@ -78,6 +84,9 @@ public abstract class IccSmsInterfaceManager extends ISms.Stub {
+         mPhone.getContext().enforceCallingPermission(
+                 "android.permission.SEND_SMS",
+                 "Sending SMS message");
++	if (mPhone.getContext().checkCallingOrSelfMockPermission("android.permission.SEND_SMS") == PackageManager.PERMISSION_MOCKED) {
++	    return;
++	}
+         if (Log.isLoggable("SMS", Log.VERBOSE)) {
+             log("sendData: destAddr=" + destAddr + " scAddr=" + scAddr + " destPort=" +
+                 destPort + " data='"+ HexDump.toHexString(data)  + "' sentIntent=" +
+@@ -115,6 +124,9 @@ public abstract class IccSmsInterfaceManager extends ISms.Stub {
+         mPhone.getContext().enforceCallingPermission(
+                 "android.permission.SEND_SMS",
+                 "Sending SMS message");
++	if (mPhone.getContext().checkCallingOrSelfMockPermission("android.permission.SEND_SMS") == PackageManager.PERMISSION_MOCKED) {
++	    return;
++	}
+         if (Log.isLoggable("SMS", Log.VERBOSE)) {
+             log("sendText: destAddr=" + destAddr + " scAddr=" + scAddr +
+                 " text='"+ text + "' sentIntent=" +
+@@ -153,6 +165,9 @@ public abstract class IccSmsInterfaceManager extends ISms.Stub {
+         mPhone.getContext().enforceCallingPermission(
+                 "android.permission.SEND_SMS",
+                 "Sending SMS message");
++	if (mPhone.getContext().checkCallingOrSelfMockPermission("android.permission.SEND_SMS") == PackageManager.PERMISSION_MOCKED) {
++	    return;
++	}
+         if (Log.isLoggable("SMS", Log.VERBOSE)) {
+             int i = 0;
+             for (String part : parts) {
+diff --git a/telephony/java/com/android/internal/telephony/cdma/RuimSmsInterfaceManager.java b/telephony/java/com/android/internal/telephony/cdma/RuimSmsInterfaceManager.java
+index cfcfd98..22dcc34 100644
+--- a/telephony/java/com/android/internal/telephony/cdma/RuimSmsInterfaceManager.java
++++ b/telephony/java/com/android/internal/telephony/cdma/RuimSmsInterfaceManager.java
+@@ -18,6 +18,7 @@
+ package com.android.internal.telephony.cdma;
+ 
+ import android.content.Context;
++import android.content.pm.PackageManager;
+ import android.os.AsyncResult;
+ import android.os.Handler;
+ import android.os.Message;
+@@ -115,6 +116,9 @@ public class RuimSmsInterfaceManager extends IccSmsInterfaceManager {
+                 " status=" + status + " ==> " +
+                 "("+ pdu + ")");
+         enforceReceiveAndSend("Updating message on RUIM");
++	if (mockReceiveOrSend()) {
++	    return true;
++	}
+         synchronized(mLock) {
+             mSuccess = false;
+             Message response = mHandler.obtainMessage(EVENT_UPDATE_DONE);
+@@ -150,6 +154,9 @@ public class RuimSmsInterfaceManager extends IccSmsInterfaceManager {
+         //NOTE smsc not used in RUIM
+         if (DBG) log("copyMessageToIccEf: status=" + status + " ==> " +
+                 "pdu=("+ Arrays.toString(pdu) + ")");
++	if (mockReceiveOrSend()) {
++	    return true;
++	}
+         enforceReceiveAndSend("Copying message to RUIM");
+         synchronized(mLock) {
+             mSuccess = false;
+@@ -178,6 +185,11 @@ public class RuimSmsInterfaceManager extends IccSmsInterfaceManager {
+         context.enforceCallingPermission(
+                 "android.permission.RECEIVE_SMS",
+                 "Reading messages from RUIM");
++
++	if (context.checkCallingOrSelfMockPermission("android.permission.RECEIVE_SMS") == PackageManager.PERMISSION_MOCKED) {
++	    return new ArrayList<SmsRawData>();
++	}
++
+         synchronized(mLock) {
+             Message response = mHandler.obtainMessage(EVENT_LOAD_DONE);
+             mPhone.getIccFileHandler().loadEFLinearFixedAll(IccConstants.EF_SMS, response);
+diff --git a/telephony/java/com/android/internal/telephony/gsm/SimSmsInterfaceManager.java b/telephony/java/com/android/internal/telephony/gsm/SimSmsInterfaceManager.java
+index 2028ca4..e66f395 100644
+--- a/telephony/java/com/android/internal/telephony/gsm/SimSmsInterfaceManager.java
++++ b/telephony/java/com/android/internal/telephony/gsm/SimSmsInterfaceManager.java
+@@ -17,6 +17,7 @@
+ package com.android.internal.telephony.gsm;
+ 
+ import android.content.Context;
++import android.content.pm.PackageManager;
+ import android.os.AsyncResult;
+ import android.os.Handler;
+ import android.os.Message;
+@@ -112,6 +113,9 @@ public class SimSmsInterfaceManager extends IccSmsInterfaceManager {
+                 " status=" + status + " ==> " +
+                 "("+ Arrays.toString(pdu) + ")");
+         enforceReceiveAndSend("Updating message on SIM");
++	if (mockReceiveOrSend()) {
++	    return true;
++	}
+         synchronized(mLock) {
+             mSuccess = false;
+             Message response = mHandler.obtainMessage(EVENT_UPDATE_DONE);
+@@ -149,6 +153,9 @@ public class SimSmsInterfaceManager extends IccSmsInterfaceManager {
+                 "pdu=("+ Arrays.toString(pdu) +
+                 "), smsm=(" + Arrays.toString(smsc) +")");
+         enforceReceiveAndSend("Copying message to SIM");
++	if (mockReceiveOrSend()) {
++	    return false;
++	}
+         synchronized(mLock) {
+             mSuccess = false;
+             Message response = mHandler.obtainMessage(EVENT_UPDATE_DONE);
+@@ -178,6 +185,10 @@ public class SimSmsInterfaceManager extends IccSmsInterfaceManager {
+         context.enforceCallingPermission(
+                 "android.permission.RECEIVE_SMS",
+                 "Reading messages from SIM");
++	if (context.checkCallingOrSelfMockPermission("android.permission.RECEIVE_SMS") ==
++	    PackageManager.PERMISSION_MOCKED) {
++	    return new ArrayList<SmsRawData>();
++	}
+         synchronized(mLock) {
+             Message response = mHandler.obtainMessage(EVENT_LOAD_DONE);
+             mPhone.getIccFileHandler().loadEFLinearFixedAll(IccConstants.EF_SMS, response);
+-- 
+1.7.0.4
+

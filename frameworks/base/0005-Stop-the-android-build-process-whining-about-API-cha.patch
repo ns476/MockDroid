@@ -1,0 +1,66 @@
+From 4ce21e1c430eaaeb0ad01c13009d85ba21b113da Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Tue, 3 Aug 2010 00:41:36 +0100
+Subject: [PATCH 05/12] Stop the android build process whining about API changes
+
+Change-Id: I7198acea2ea72885f9a8269d079c279b5924e782
+---
+ core/java/android/content/Context.java           |    7 ++++++-
+ core/java/android/content/pm/PackageManager.java |    3 +++
+ 2 files changed, 9 insertions(+), 1 deletions(-)
+
+diff --git a/core/java/android/content/Context.java b/core/java/android/content/Context.java
+index d625e53..912e421 100644
+--- a/core/java/android/content/Context.java
++++ b/core/java/android/content/Context.java
+@@ -1551,7 +1551,9 @@ public abstract class Context {
+      * @see #checkCallingPermission
+      */
+     public abstract int checkPermission(String permission, int pid, int uid);
+-
++    /**
++     * @hide
++     */
+     public abstract int checkMockPermission(String permission, int pid, int uid);
+ 
+     /**
+@@ -1595,6 +1597,9 @@ public abstract class Context {
+      */
+     public abstract int checkCallingOrSelfPermission(String permission);
+ 
++    /**
++     * @hide
++     */
+     public abstract int checkCallingOrSelfMockPermission(String permission);
+ 
+     /**
+diff --git a/core/java/android/content/pm/PackageManager.java b/core/java/android/content/pm/PackageManager.java
+index 74bb747..014d8af 100644
+--- a/core/java/android/content/pm/PackageManager.java
++++ b/core/java/android/content/pm/PackageManager.java
+@@ -193,12 +193,14 @@ public abstract class PackageManager {
+     /**
+      * Permission should be mocked: returned by {@link #checkMocked}
+      * if the permission should be mocked.
++     * @hide
+      */
+     public static final int PERMISSION_MOCKED = 0;
+     
+     /**
+      * Permission should be treated normally: returned by {@link #checkMocked}
+      * if the permission should be granted as normal.
++     * @hide
+      */
+     public static final int PERMISSION_NORMAL = -1;
+ 
+@@ -1115,6 +1117,7 @@ public abstract class PackageManager {
+      *
+      * @see #PERMISSION_MOCKED
+      * @see #PERMISSION_NORMAL
++     * @hide
+      */
+     public abstract int checkMockPermission(String permName, String pkgName);
+ 
+-- 
+1.7.0.4
+

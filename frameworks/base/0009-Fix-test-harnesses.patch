@@ -1,0 +1,55 @@
+From cbca4f996c74f0ea5d686ac2d16522a2f59dbc27 Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Thu, 16 Sep 2010 15:58:48 +0100
+Subject: [PATCH 09/12] Fix test harnesses
+
+Change-Id: Id09e840f72f582a6e3d78887bc31deff883086f3
+---
+ test-runner/src/android/test/mock/MockContext.java |    8 ++++++--
+ .../src/android/test/mock/MockPackageManager.java  |    4 +++-
+ 2 files changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/test-runner/src/android/test/mock/MockContext.java b/test-runner/src/android/test/mock/MockContext.java
+index 1ca0dba..462a6b2 100644
+--- a/test-runner/src/android/test/mock/MockContext.java
++++ b/test-runner/src/android/test/mock/MockContext.java
+@@ -336,7 +336,9 @@ public class MockContext extends Context {
+     public int checkPermission(String permission, int pid, int uid) {
+         throw new UnsupportedOperationException();
+     }
+-
++    /**
++     * @hide
++     */
+     @Override
+     public int checkMockPermission(String permission, int pid, int uid) {
+         throw new UnsupportedOperationException();
+@@ -351,7 +353,9 @@ public class MockContext extends Context {
+     public int checkCallingOrSelfPermission(String permission) {
+         throw new UnsupportedOperationException();
+     }
+-
++    /**
++     * @hide
++     */
+     @Override
+     public int checkCallingOrSelfMockPermission(String permission) {
+ 	throw new UnsupportedOperationException();
+diff --git a/test-runner/src/android/test/mock/MockPackageManager.java b/test-runner/src/android/test/mock/MockPackageManager.java
+index d612c20..fc588c1 100644
+--- a/test-runner/src/android/test/mock/MockPackageManager.java
++++ b/test-runner/src/android/test/mock/MockPackageManager.java
+@@ -135,7 +135,9 @@ public class MockPackageManager extends PackageManager {
+     public int checkPermission(String permName, String pkgName) {
+         throw new UnsupportedOperationException();
+     }
+-
++    /**
++     * @hide
++     */
+     @Override
+     public int checkMockPermission(String permName, String pkgName) {
+         throw new UnsupportedOperationException();
+-- 
+1.7.0.4
+

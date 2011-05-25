@@ -1,0 +1,483 @@
+From f814def50f8196ebc2b8019f68367f917a1e9013 Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Thu, 29 Jul 2010 17:19:22 +0100
+Subject: [PATCH 01/12] Initial implementation of mock permissions
+
+Change-Id: I21b5fb28b2fb9438ddab33c3666308190434a743
+---
+ core/java/android/app/ActivityManagerNative.java   |   28 ++++++
+ core/java/android/app/ContextImpl.java             |   35 ++++++++
+ core/java/android/app/IActivityManager.java        |    4 +
+ core/java/android/content/Context.java             |    4 +
+ core/java/android/content/ContextWrapper.java      |   10 ++
+ core/java/android/content/pm/IPackageManager.aidl  |    4 +
+ core/java/android/content/pm/PackageManager.java   |   25 ++++++
+ core/java/android/content/pm/PackageParser.java    |    4 +
+ .../com/android/server/PackageManagerService.java  |   89 +++++++++++++++++++-
+ .../android/server/am/ActivityManagerService.java  |   22 +++++
+ 10 files changed, 224 insertions(+), 1 deletions(-)
+
+diff --git a/core/java/android/app/ActivityManagerNative.java b/core/java/android/app/ActivityManagerNative.java
+index f694285..559058b 100644
+--- a/core/java/android/app/ActivityManagerNative.java
++++ b/core/java/android/app/ActivityManagerNative.java
+@@ -869,6 +869,17 @@ public abstract class ActivityManagerNative extends Binder implements IActivityM
+             return true;
+         }
+ 
++	case CHECK_MOCK_PERMISSION_TRANSACTION: {
++	    data.enforceInterface(IActivityManager.descriptor);
++            String perm = data.readString();
++            int pid = data.readInt();
++            int uid = data.readInt();
++            int res = checkMockPermission(perm, pid, uid);
++            reply.writeNoException();
++            reply.writeInt(res);
++            return true;
++	}
++
+         case CHECK_URI_PERMISSION_TRANSACTION: {
+             data.enforceInterface(IActivityManager.descriptor);
+             Uri uri = Uri.CREATOR.createFromParcel(data);
+@@ -2290,6 +2301,23 @@ class ActivityManagerProxy implements IActivityManager
+         reply.recycle();
+         return res;
+     }
++
++    public int checkMockPermission(String permission, int pid, int uid)
++            throws RemoteException {
++        Parcel data = Parcel.obtain();
++        Parcel reply = Parcel.obtain();
++        data.writeInterfaceToken(IActivityManager.descriptor);
++        data.writeString(permission);
++        data.writeInt(pid);
++        data.writeInt(uid);
++        mRemote.transact(CHECK_MOCK_PERMISSION_TRANSACTION, data, reply, 0);
++        reply.readException();
++        int res = reply.readInt();
++        data.recycle();
++        reply.recycle();
++        return res;
++    }
++
+     public boolean clearApplicationUserData(final String packageName,
+             final IPackageDataObserver observer) throws RemoteException {        
+         Parcel data = Parcel.obtain();
+diff --git a/core/java/android/app/ContextImpl.java b/core/java/android/app/ContextImpl.java
+index 725de1a..e233674 100644
+--- a/core/java/android/app/ContextImpl.java
++++ b/core/java/android/app/ContextImpl.java
+@@ -1202,6 +1202,22 @@ class ContextImpl extends Context {
+     }
+ 
+     @Override
++    public int checkMockPermission(String permission, int pid, int uid) {
++	if (permission == null) {
++	    throw new IllegalArgumentException("permission is null");
++	}
++	if (!Process.supportsProcesses()) {
++            return PackageManager.PERMISSION_NORMAL;
++        }
++        try {
++            return ActivityManagerNative.getDefault().checkMockPermission(
++								      permission, pid, uid);
++        } catch (RemoteException e) {
++            return PackageManager.PERMISSION_NORMAL;
++        }
++    }
++
++    @Override
+     public int checkCallingPermission(String permission) {
+         if (permission == null) {
+             throw new IllegalArgumentException("permission is null");
+@@ -1228,6 +1244,16 @@ class ContextImpl extends Context {
+                 Binder.getCallingUid());
+     }
+ 
++    @Override
++    public int checkCallingOrSelfMockPermission(String permission) {
++        if (permission == null) {
++            throw new IllegalArgumentException("permission is null");
++        }
++
++        return checkMockPermission(permission, Binder.getCallingPid(),
++				   Binder.getCallingUid());
++    }
++
+     private void enforce(
+             String permission, int resultOfCheck,
+             boolean selfToo, int uid, String message) {
+@@ -1859,6 +1885,15 @@ class ContextImpl extends Context {
+             }
+         }
+ 
++	@Override
++	public int checkMockPermission(String permName, String pkgName) {
++	    try {
++		return mPM.checkMockPermission(permName, pkgName);
++	    } catch (RemoteException e) {
++		throw new RuntimeException("Package manager has died", e);
++	    }
++	}
++
+         @Override
+         public boolean addPermission(PermissionInfo info) {
+             try {
+diff --git a/core/java/android/app/IActivityManager.java b/core/java/android/app/IActivityManager.java
+index 31f0a63..729c22e 100644
+--- a/core/java/android/app/IActivityManager.java
++++ b/core/java/android/app/IActivityManager.java
+@@ -213,6 +213,8 @@ public interface IActivityManager extends IInterface {
+     public int checkPermission(String permission, int pid, int uid)
+             throws RemoteException;
+ 
++    public int checkMockPermission(String permission, int pid, int uid) throws RemoteException;
++
+     public int checkUriPermission(Uri uri, int pid, int uid, int mode)
+             throws RemoteException;
+     public void grantUriPermission(IApplicationThread caller, String targetPkg,
+@@ -458,6 +460,7 @@ public interface IActivityManager extends IInterface {
+     int SET_PROCESS_LIMIT_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+50;
+     int GET_PROCESS_LIMIT_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+51;
+     int CHECK_PERMISSION_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+52;
++    // CHECK_MOCK_PERMISSION_TRANSACTION is at the end
+     int CHECK_URI_PERMISSION_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+53;
+     int GRANT_URI_PERMISSION_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+54;
+     int REVOKE_URI_PERMISSION_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+55;
+@@ -513,4 +516,5 @@ public interface IActivityManager extends IInterface {
+     int WILL_ACTIVITY_BE_VISIBLE_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+105;
+     int START_ACTIVITY_WITH_CONFIG_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+106;
+     int GET_RUNNING_EXTERNAL_APPLICATIONS_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+107;
++    int CHECK_MOCK_PERMISSION_TRANSACTION = IBinder.FIRST_CALL_TRANSACTION+108;
+ }
+diff --git a/core/java/android/content/Context.java b/core/java/android/content/Context.java
+index 30822d4..d625e53 100644
+--- a/core/java/android/content/Context.java
++++ b/core/java/android/content/Context.java
+@@ -1552,6 +1552,8 @@ public abstract class Context {
+      */
+     public abstract int checkPermission(String permission, int pid, int uid);
+ 
++    public abstract int checkMockPermission(String permission, int pid, int uid);
++
+     /**
+      * Determine whether the calling process of an IPC you are handling has been
+      * granted a particular permission.  This is basically the same as calling
+@@ -1593,6 +1595,8 @@ public abstract class Context {
+      */
+     public abstract int checkCallingOrSelfPermission(String permission);
+ 
++    public abstract int checkCallingOrSelfMockPermission(String permission);
++
+     /**
+      * If the given permission is not allowed for a particular process
+      * and user ID running in the system, throw a {@link SecurityException}.
+diff --git a/core/java/android/content/ContextWrapper.java b/core/java/android/content/ContextWrapper.java
+index a447108..ed5ba61 100644
+--- a/core/java/android/content/ContextWrapper.java
++++ b/core/java/android/content/ContextWrapper.java
+@@ -369,6 +369,11 @@ public class ContextWrapper extends Context {
+     }
+ 
+     @Override
++    public int checkMockPermission(String permission, int pid, int uid) {
++	return mBase.checkMockPermission(permission, pid, uid);
++    }
++
++    @Override
+     public int checkCallingPermission(String permission) {
+         return mBase.checkCallingPermission(permission);
+     }
+@@ -377,6 +382,11 @@ public class ContextWrapper extends Context {
+     public int checkCallingOrSelfPermission(String permission) {
+         return mBase.checkCallingOrSelfPermission(permission);
+     }
++    
++    @Override
++    public int checkCallingOrSelfMockPermission(String permission) {
++	return mBase.checkCallingOrSelfMockPermission(permission);
++    }
+ 
+     @Override
+     public void enforcePermission(
+diff --git a/core/java/android/content/pm/IPackageManager.aidl b/core/java/android/content/pm/IPackageManager.aidl
+index 9939478..0aad762 100644
+--- a/core/java/android/content/pm/IPackageManager.aidl
++++ b/core/java/android/content/pm/IPackageManager.aidl
+@@ -70,8 +70,12 @@ interface IPackageManager {
+ 
+     int checkPermission(String permName, String pkgName);
+     
++    int checkMockPermission(String permName, String pkgName);
++    
+     int checkUidPermission(String permName, int uid);
+     
++    int checkUidMockPermission(String permName, int uid);
++    
+     boolean addPermission(in PermissionInfo info);
+     
+     void removePermission(String name);
+diff --git a/core/java/android/content/pm/PackageManager.java b/core/java/android/content/pm/PackageManager.java
+index 68b44e7..74bb747 100644
+--- a/core/java/android/content/pm/PackageManager.java
++++ b/core/java/android/content/pm/PackageManager.java
+@@ -191,6 +191,18 @@ public abstract class PackageManager {
+     public static final int PERMISSION_DENIED = -1;
+ 
+     /**
++     * Permission should be mocked: returned by {@link #checkMocked}
++     * if the permission should be mocked.
++     */
++    public static final int PERMISSION_MOCKED = 0;
++    
++    /**
++     * Permission should be treated normally: returned by {@link #checkMocked}
++     * if the permission should be granted as normal.
++     */
++    public static final int PERMISSION_NORMAL = -1;
++
++    /**
+      * Signature check result: this is returned by {@link #checkSignatures}
+      * if the two packages have a matching signature.
+      */
+@@ -1094,6 +1106,19 @@ public abstract class PackageManager {
+     public abstract int checkPermission(String permName, String pkgName);
+ 
+     /**
++     * Check whether a permission should be mocked for a package.
++     * @param permName The name of the permission
++     * @param pkgName The name of the package
++     *
++     * @return If the permission should be mocked, PERMISSION_MOCKED is
++     * returned. If it shouldn't, PERMISSION_NORMAL is returned.
++     *
++     * @see #PERMISSION_MOCKED
++     * @see #PERMISSION_NORMAL
++     */
++    public abstract int checkMockPermission(String permName, String pkgName);
++
++    /**
+      * Add a new dynamic permission to the system.  For this to work, your
+      * package must have defined a permission tree through the
+      * {@link android.R.styleable#AndroidManifestPermissionTree
+diff --git a/core/java/android/content/pm/PackageParser.java b/core/java/android/content/pm/PackageParser.java
+index 2a20a2d..3698e8e 100644
+--- a/core/java/android/content/pm/PackageParser.java
++++ b/core/java/android/content/pm/PackageParser.java
+@@ -46,6 +46,8 @@ import java.lang.ref.WeakReference;
+ import java.security.cert.Certificate;
+ import java.security.cert.CertificateEncodingException;
+ import java.util.ArrayList;
++import java.util.Set;
++import java.util.HashSet;
+ import java.util.Enumeration;
+ import java.util.Iterator;
+ import java.util.List;
+@@ -2655,6 +2657,7 @@ public class PackageParser {
+         public final ApplicationInfo applicationInfo = new ApplicationInfo();
+ 
+         public final ArrayList<Permission> permissions = new ArrayList<Permission>(0);
++	
+         public final ArrayList<PermissionGroup> permissionGroups = new ArrayList<PermissionGroup>(0);
+         public final ArrayList<Activity> activities = new ArrayList<Activity>(0);
+         public final ArrayList<Activity> receivers = new ArrayList<Activity>(0);
+@@ -2663,6 +2666,7 @@ public class PackageParser {
+         public final ArrayList<Instrumentation> instrumentation = new ArrayList<Instrumentation>(0);
+ 
+         public final ArrayList<String> requestedPermissions = new ArrayList<String>();
++	public final Set<String> mockedPermissions = new HashSet<String>();
+ 
+         public ArrayList<String> protectedBroadcasts;
+         
+diff --git a/services/java/com/android/server/PackageManagerService.java b/services/java/com/android/server/PackageManagerService.java
+index d23c16a..56ee3f8 100644
+--- a/services/java/com/android/server/PackageManagerService.java
++++ b/services/java/com/android/server/PackageManagerService.java
+@@ -100,6 +100,7 @@ import java.io.FilenameFilter;
+ import java.io.IOException;
+ import java.io.InputStream;
+ import java.io.PrintWriter;
++import java.io.BufferedReader;
+ import java.security.NoSuchAlgorithmException;
+ import java.text.SimpleDateFormat;
+ import java.util.ArrayList;
+@@ -781,7 +782,7 @@ class PackageManagerService extends IPackageManager.Stub {
+             }
+ 
+             readPermissions();
+-
++	    
+             mRestoredSettings = mSettings.readLP();
+             long startTime = SystemClock.uptimeMillis();
+ 
+@@ -965,6 +966,8 @@ class PackageManagerService extends IPackageManager.Stub {
+             mAppInstallObserver.startWatching();
+             scanDirLI(mAppInstallDir, 0, scanMode);
+ 
++	    readMockPermissions();
++
+             mDrmAppInstallObserver = new AppDirObserver(
+                 mDrmAppPrivateInstallDir.getPath(), OBSERVER_EVENTS, false);
+             mDrmAppInstallObserver.startWatching();
+@@ -1102,6 +1105,60 @@ class PackageManagerService extends IPackageManager.Stub {
+         Log.i(TAG, sb.toString());
+     }
+ 
++    void readMockPermissions() {
++	File mockDir = new File(Environment.getRootDirectory(), "etc/permissions/mock");
++	if (!mockDir.exists() || !mockDir.isDirectory()) {
++	    Slog.w(TAG, "Mock directory doesn't exist, skipping..");
++	    return;
++	}
++		
++	if(!mockDir.canRead()) {
++	    Slog.w(TAG, "Mock directory can't be read");
++	}
++	HashMap<String, ArrayList<String>> mocks = new HashMap<String, ArrayList<String>>();
++	for(File mock: mockDir.listFiles()) {
++	    String pkgName = mock.getName();
++	    ArrayList<String> perms = new ArrayList<String>(0);
++	    try {
++		BufferedReader br = new BufferedReader(new FileReader(mock));
++		String line;
++		while ((line = br.readLine()) != null) {
++		    if (line.length() != 0) {
++			perms.add(line);
++		    }
++		}
++		mocks.put(pkgName, perms);
++	    } catch (FileNotFoundException e) {
++		Slog.w(TAG, "Couldn't open mock permission file");
++		continue;
++	    } catch (IOException e) {
++		Slog.w(TAG, "Couldn't read mock permission");
++	    }
++	}
++	
++	Slog.i(TAG, "Found " + Integer.toString(mocks.size()) + " mock entries");
++
++	for(Map.Entry<String, ArrayList<String>> e: mocks.entrySet()) {
++	    String name = e.getKey();
++	    Slog.i(TAG, "Adding mock permissions for " + name);
++	    ArrayList<String> perms = e.getValue();
++	    PackageParser.Package pkg = mPackages.get(name);
++	    if (pkg == null) {
++		Slog.w(TAG, "Package " + name +" is not installed, skipping..");
++		continue;
++	    }
++	    for (String perm: perms) {
++		pkg.mockedPermissions.add(perm);
++		Slog.i(TAG, "Mocking permission " + perm);
++	    }
++	}
++	Slog.i(TAG, "Finished reading mock permissions");
++	/*for(Map.Entry<String, PackageParser.Package> pkg: mPackages.entrySet()) {
++	    String name = pkg.getKey();
++	    Slog.i(TAG, "Have pkg: " + name);
++	    }*/
++    }
++
+     private void readPermissionsFromXml(File permFile) {
+         FileReader permReader = null;
+         try {
+@@ -1658,6 +1715,18 @@ class PackageManagerService extends IPackageManager.Stub {
+         return PackageManager.PERMISSION_DENIED;
+     }
+ 
++    public int checkMockPermission(String permName, String pkgName) {
++	synchronized (mPackages) {
++	    PackageParser.Package p = mPackages.get(pkgName);
++	    if (p != null) {
++		if (p.mockedPermissions.contains(permName)) {
++		    return PackageManager.PERMISSION_MOCKED;
++		}
++	    }
++	}
++	return PackageManager.PERMISSION_NORMAL;
++    }
++
+     public int checkUidPermission(String permName, int uid) {
+         synchronized (mPackages) {
+             Object obj = mSettings.getUserIdLP(uid);
+@@ -1676,6 +1745,19 @@ class PackageManagerService extends IPackageManager.Stub {
+         return PackageManager.PERMISSION_DENIED;
+     }
+ 
++    public int checkUidMockPermission(String permName, int uid) {
++	synchronized (mPackages) {
++	    final String[] pkgs = getPackagesForUid(uid);
++	    for (String pkg: pkgs) {
++		if(mPackages.containsKey(pkg) &&
++		   mPackages.get(pkg).mockedPermissions.contains(permName)) {
++		    return PackageManager.PERMISSION_MOCKED;
++		}
++	    }
++	}
++	return PackageManager.PERMISSION_NORMAL;
++    }
++
+     private BasePermission findPermissionTreeLP(String permName) {
+         for(BasePermission bp : mSettings.mPermissionTrees.values()) {
+             if (permName.startsWith(bp.name) &&
+@@ -4673,6 +4755,9 @@ class PackageManagerService extends IPackageManager.Stub {
+                             }
+                             addedPackage = p.applicationInfo.packageName;
+                             addedUid = p.applicationInfo.uid;
++			    
++			    // We might want to mock the new package..
++			    readMockPermissions();
+                         }
+                     }
+                 }
+@@ -5846,6 +5931,8 @@ class PackageManagerService extends IPackageManager.Stub {
+             res.returnCode = PackageManager.INSTALL_SUCCEEDED;
+             //to update install status
+             mSettings.writeLP();
++	    
++	    readMockPermissions();
+         }
+     }
+ 
+diff --git a/services/java/com/android/server/am/ActivityManagerService.java b/services/java/com/android/server/am/ActivityManagerService.java
+index f5a8119..179a468 100644
+--- a/services/java/com/android/server/am/ActivityManagerService.java
++++ b/services/java/com/android/server/am/ActivityManagerService.java
+@@ -6331,6 +6331,21 @@ public final class ActivityManagerService extends ActivityManagerNative implemen
+         }
+         return PackageManager.PERMISSION_DENIED;
+     }
++    
++    int checkComponentMockPermission(String permission, int pid, int uid,
++				     int reqUid) {
++	Identity tlsIdentity = sCallerIdentity.get();
++	if (tlsIdentity != null) {
++	    uid = tlsIdentity.uid;
++	    pid = tlsIdentity.pid;
++	}
++	
++	try {
++	    return ActivityThread.getPackageManager()
++		.checkUidMockPermission(permission, uid);
++	} catch (RemoteException e) {}
++	return PackageManager.PERMISSION_NORMAL;
++    }
+ 
+     /**
+      * As the only public entry point for permissions checking, this method
+@@ -6348,6 +6363,13 @@ public final class ActivityManagerService extends ActivityManagerNative implemen
+         return checkComponentPermission(permission, pid, uid, -1);
+     }
+ 
++    public int checkMockPermission(String permission, int pid, int uid) {
++	if (permission == null) {
++	    return PackageManager.PERMISSION_NORMAL;
++	}
++	return checkComponentMockPermission(permission, pid, uid, -1);
++    }
++
+     /**
+      * Binder IPC calls go through the public entry point.
+      * This can be called with or without the global lock held.
+-- 
+1.7.0.4
+

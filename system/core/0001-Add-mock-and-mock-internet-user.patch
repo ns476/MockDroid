@@ -1,0 +1,57 @@
+From 2eb73fc25f6b586a2c82878de427cbe0e4507da5 Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Thu, 16 Sep 2010 16:20:39 +0100
+Subject: [PATCH 1/2] Add mock and mock internet user
+
+Change-Id: I0a5e8bd1693b065f8755627e2cbf0067eadd1c3b
+---
+ include/private/android_filesystem_config.h |   10 ++++++++++
+ 1 files changed, 10 insertions(+), 0 deletions(-)
+
+diff --git a/include/private/android_filesystem_config.h b/include/private/android_filesystem_config.h
+index 1dbe171..510608b 100644
+--- a/include/private/android_filesystem_config.h
++++ b/include/private/android_filesystem_config.h
+@@ -65,6 +65,12 @@
+ #define AID_NET_RAW       3004  /* can create raw INET sockets */
+ #define AID_NET_ADMIN     3005  /* can configure interfaces and routing tables. */
+ 
++/* These are mock group ids for the above */
++#define AID_MOCK_INET     8003
++
++/* Allowed to read and write mock permissions */
++#define AID_MOCK          8999
++
+ #define AID_MISC          9998  /* access to misc storage */
+ #define AID_NOBODY        9999
+ 
+@@ -103,8 +109,10 @@ static struct android_id_info android_ids[] = {
+     { "keystore",  AID_KEYSTORE, },
+     { "usb",       AID_USB, },
+     { "inet",      AID_INET, },
++    { "mock_inet", AID_MOCK_INET, },
+     { "net_raw",   AID_NET_RAW, },
+     { "net_admin", AID_NET_ADMIN, },
++    { "mock",      AID_MOCK, },
+     { "misc",      AID_MISC, },
+     { "nobody",    AID_NOBODY, },
+ };
+@@ -140,6 +148,7 @@ static struct fs_path_config android_dirs[] = {
+     { 00755, AID_ROOT,   AID_SHELL,  "system/bin" },
+     { 00755, AID_ROOT,   AID_SHELL,  "system/xbin" },
+     { 00755, AID_ROOT,   AID_ROOT,   "system/etc/ppp" },
++    { 00770, AID_ROOT,   AID_MOCK,   "system/etc/mock" },
+     { 00777, AID_ROOT,   AID_ROOT,   "sdcard" },
+     { 00755, AID_ROOT,   AID_ROOT,   0 },
+ };
+@@ -165,6 +174,7 @@ static struct fs_path_config android_files[] = {
+     { 00640, AID_SYSTEM,    AID_SYSTEM,    "system/etc/bluetooth/auto_pairing.conf" },
+     { 00444, AID_RADIO,     AID_AUDIO,     "system/etc/AudioPara4.csv" },
+     { 00555, AID_ROOT,      AID_ROOT,      "system/etc/ppp/*" },
++    { 00660, AID_ROOT,      AID_MOCK,      "system/etc/mock/*" },
+     { 00644, AID_SYSTEM,    AID_SYSTEM,    "data/app/*" },
+     { 00644, AID_SYSTEM,    AID_SYSTEM,    "data/app-private/*" },
+     { 00644, AID_APP,       AID_APP,       "data/data/*" },
+-- 
+1.7.0.4
+

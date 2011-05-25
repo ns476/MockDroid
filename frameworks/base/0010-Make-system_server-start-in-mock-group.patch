@@ -1,0 +1,27 @@
+From 891de26d23b8ca16ab73cefd33ee32c5e4fe06d6 Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Tue, 12 Oct 2010 11:39:22 +0100
+Subject: [PATCH 10/12] Make system_server start in mock group
+
+Change-Id: I5a8f37989b451e093cb3b4118196f76b81a01125
+---
+ cmds/runtime/main_runtime.cpp |    3 ++-
+ 1 files changed, 2 insertions(+), 1 deletions(-)
+
+diff --git a/cmds/runtime/main_runtime.cpp b/cmds/runtime/main_runtime.cpp
+index 83cb533..9dd66c0 100644
+--- a/cmds/runtime/main_runtime.cpp
++++ b/cmds/runtime/main_runtime.cpp
+@@ -44,7 +44,8 @@
+ static const char* ZYGOTE_ARGV[] = { 
+     "--setuid=1000",
+     "--setgid=1000",
+-    "--setgroups=1001,1002,1003,1004,1005,1006,1007,1008,1009,1010,3001,3002,3003",
++    /* Must include AID_MOCK */
++    "--setgroups=1001,1002,1003,1004,1005,1006,1007,1008,1009,1010,3001,3002,3003,8999",
+     /* CAP_SYS_TTY_CONFIG & CAP_SYS_RESOURCE & CAP_NET_BROADCAST &
+      * CAP_NET_ADMIN & CAP_NET_RAW & CAP_NET_BIND_SERVICE  & CAP_KILL &
+      * CAP_SYS_BOOT CAP_SYS_NICE
+-- 
+1.7.0.4
+

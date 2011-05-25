@@ -1,0 +1,29 @@
+From c89a6cf9d4f8a6471628c6f5409ab0722d3de661 Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Wed, 13 Oct 2010 01:52:10 +0100
+Subject: [PATCH 11/12] Make IPTablesReaderService read from kernel log
+
+Change-Id: Ic830952d3045340b30b60f06b098110b0df921f6
+---
+ .../com/android/server/IPTablesReaderService.java  |    4 +++-
+ 1 files changed, 3 insertions(+), 1 deletions(-)
+
+diff --git a/services/java/com/android/server/IPTablesReaderService.java b/services/java/com/android/server/IPTablesReaderService.java
+index d1cf942..23a0a10 100644
+--- a/services/java/com/android/server/IPTablesReaderService.java
++++ b/services/java/com/android/server/IPTablesReaderService.java
+@@ -92,8 +92,10 @@ public class IPTablesReaderService {
+ 	// Abstract out the receiving of events as we want to move away from
+ 	// iptables in future and use netlink or something
+ 
++	// Needs a kernel patch to ensure system_server can read from /proc/kmsg
++
+ 	private void init() throws FileNotFoundException {
+-	    mBR = new BufferedReader(new FileReader("/data/log"));
++	    mBR = new BufferedReader(new FileReader("/proc/kmsg"));
+ 	}
+ 
+ 	private boolean handleNext() throws IOException {
+-- 
+1.7.0.4
+

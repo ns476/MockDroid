@@ -1,0 +1,298 @@
+From cddf741b743aab201c36befeb9dcff995214705e Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Mon, 2 Aug 2010 15:38:21 +0100
+Subject: [PATCH 03/12] Make test harnesses implement missing methods to avoid build errors
+
+Change-Id: If25447c8ede37a4b6e3cfae054b4d0f141527fc9
+---
+ core/java/android/net/ConnectivityManager.java     |   58 ++++++++++++++++++++
+ core/java/android/net/IConnectivityManager.aidl    |    4 ++
+ core/java/android/webkit/WebSettings.java          |    5 ++-
+ .../com/android/server/ConnectivityService.java    |    8 +++
+ test-runner/src/android/test/mock/MockContext.java |   10 ++++
+ .../src/android/test/mock/MockPackageManager.java  |    5 ++
+ .../android/layoutlib/bridge/BridgeContext.java    |   13 +++++
+ 7 files changed, 102 insertions(+), 1 deletions(-)
+
+diff --git a/core/java/android/net/ConnectivityManager.java b/core/java/android/net/ConnectivityManager.java
+index 5b0f60f..ed625ce 100644
+--- a/core/java/android/net/ConnectivityManager.java
++++ b/core/java/android/net/ConnectivityManager.java
+@@ -206,7 +206,26 @@ public class ConnectivityManager
+         return networkType >= 0 && networkType <= MAX_NETWORK_TYPE;
+     }
+ 
++    private boolean checkMockChange() {
++	try {
++	    return mService.checkMockChange();
++	} catch (RemoteException e) {
++	    return false;
++	}
++    }
++
++    private boolean checkMockAccess() {
++	try {
++	    return mService.checkMockAccess();
++	} catch (RemoteException e) {
++	    return false;
++	}
++    }
++
+     public void setNetworkPreference(int preference) {
++	if (checkMockChange()) {
++	    return;
++	}
+         try {
+             mService.setNetworkPreference(preference);
+         } catch (RemoteException e) {
+@@ -214,6 +233,10 @@ public class ConnectivityManager
+     }
+ 
+     public int getNetworkPreference() {
++	if (checkMockAccess()) {
++	    // TODO: probably a sensible default..
++	    return ConnectivityManager.TYPE_WIFI;
++	}
+         try {
+             return mService.getNetworkPreference();
+         } catch (RemoteException e) {
+@@ -222,6 +245,10 @@ public class ConnectivityManager
+     }
+ 
+     public NetworkInfo getActiveNetworkInfo() {
++	if (checkMockAccess()) {
++	    // we should probably return a subclass (MockNetworkInfo) here?
++	    return new NetworkInfo(ConnectivityManager.TYPE_WIFI);
++	}
+         try {
+             return mService.getActiveNetworkInfo();
+         } catch (RemoteException e) {
+@@ -230,6 +257,9 @@ public class ConnectivityManager
+     }
+ 
+     public NetworkInfo getNetworkInfo(int networkType) {
++	if (checkMockAccess()) {
++	    return new NetworkInfo(networkType);
++	}
+         try {
+             return mService.getNetworkInfo(networkType);
+         } catch (RemoteException e) {
+@@ -238,6 +268,9 @@ public class ConnectivityManager
+     }
+ 
+     public NetworkInfo[] getAllNetworkInfo() {
++	if (checkMockAccess()) {
++	    return new NetworkInfo[0];
++	}
+         try {
+             return mService.getAllNetworkInfo();
+         } catch (RemoteException e) {
+@@ -247,6 +280,9 @@ public class ConnectivityManager
+ 
+     /** {@hide} */
+     public boolean setRadios(boolean turnOn) {
++	if (checkMockChange()) {
++	    return true;
++	}
+         try {
+             return mService.setRadios(turnOn);
+         } catch (RemoteException e) {
+@@ -256,6 +292,9 @@ public class ConnectivityManager
+ 
+     /** {@hide} */
+     public boolean setRadio(int networkType, boolean turnOn) {
++	if(checkMockChange()) {
++	    return true;
++	}
+         try {
+             return mService.setRadio(networkType, turnOn);
+         } catch (RemoteException e) {
+@@ -275,6 +314,10 @@ public class ConnectivityManager
+      * always indicates failure.
+      */
+     public int startUsingNetworkFeature(int networkType, String feature) {
++	if (checkMockChange()) {
++	    // probably not right
++	    return -1;
++	}
+         try {
+             return mService.startUsingNetworkFeature(networkType, feature,
+                     new Binder());
+@@ -295,6 +338,9 @@ public class ConnectivityManager
+      * always indicates failure.
+      */
+     public int stopUsingNetworkFeature(int networkType, String feature) {
++	if (checkMockChange()) {
++	    return -1;
++	}
+         try {
+             return mService.stopUsingNetworkFeature(networkType, feature);
+         } catch (RemoteException e) {
+@@ -352,6 +398,9 @@ public class ConnectivityManager
+      * @return Whether background data usage is allowed.
+      */
+     public boolean getBackgroundDataSetting() {
++	if (checkMockAccess()) {
++	    return false;
++	}
+         try {
+             return mService.getBackgroundDataSetting();
+         } catch (RemoteException e) {
+@@ -371,6 +420,9 @@ public class ConnectivityManager
+      * @hide
+      */
+     public void setBackgroundDataSetting(boolean allowBackgroundData) {
++	if (checkMockChange()) {
++	    return;
++	}
+         try {
+             mService.setBackgroundDataSetting(allowBackgroundData);
+         } catch (RemoteException e) {
+@@ -384,6 +436,9 @@ public class ConnectivityManager
+      * @hide
+      */
+     public boolean getMobileDataEnabled() {
++	if (checkMockAccess()) {
++	    return false;
++	}
+         try {
+             return mService.getMobileDataEnabled();
+         } catch (RemoteException e) {
+@@ -399,6 +454,9 @@ public class ConnectivityManager
+      * @hide
+      */
+     public void setMobileDataEnabled(boolean enabled) {
++	if(checkMockChange()) {
++	    return;
++	}
+         try {
+             mService.setMobileDataEnabled(enabled);
+         } catch (RemoteException e) {
+diff --git a/core/java/android/net/IConnectivityManager.aidl b/core/java/android/net/IConnectivityManager.aidl
+index 0eb3afd..03278b7 100644
+--- a/core/java/android/net/IConnectivityManager.aidl
++++ b/core/java/android/net/IConnectivityManager.aidl
+@@ -57,6 +57,10 @@ interface IConnectivityManager
+ 
+     void setMobileDataEnabled(boolean enabled);
+ 
++    boolean checkMockAccess();
++
++    boolean checkMockChange();
++
+     int tether(String iface);
+ 
+     int untether(String iface);
+diff --git a/core/java/android/webkit/WebSettings.java b/core/java/android/webkit/WebSettings.java
+index b767f11..e6275cb 100644
+--- a/core/java/android/webkit/WebSettings.java
++++ b/core/java/android/webkit/WebSettings.java
+@@ -324,7 +324,10 @@ public class WebSettings {
+ 
+         mBlockNetworkLoads = mContext.checkPermission(
+                 "android.permission.INTERNET", android.os.Process.myPid(),
+-                android.os.Process.myUid()) != PackageManager.PERMISSION_GRANTED;
++                android.os.Process.myUid()) != PackageManager.PERMISSION_GRANTED
++	    &&
++	    mContext.checkPermission("android.permission.INTERNET", android.os.Process.myPid(),
++				     android.os.Process.myUid()) != PackageManager.PERMISSION_MOCKED;
+     }
+ 
+     /**
+diff --git a/services/java/com/android/server/ConnectivityService.java b/services/java/com/android/server/ConnectivityService.java
+index 9edce20..a5d2bcf 100644
+--- a/services/java/com/android/server/ConnectivityService.java
++++ b/services/java/com/android/server/ConnectivityService.java
+@@ -865,6 +865,14 @@ public class ConnectivityService extends IConnectivityManager.Stub {
+         return numConnectedNets;
+     }
+ 
++    public boolean checkMockAccess() {
++	return mContext.checkCallingOrSelfMockPermission(android.Manifest.permission.ACCESS_NETWORK_STATE) == PackageManager.PERMISSION_MOCKED;
++    }
++
++    public boolean checkMockChange() {
++	return mContext.checkCallingOrSelfMockPermission(android.Manifest.permission.CHANGE_NETWORK_STATE) == PackageManager.PERMISSION_MOCKED;
++    }
++
+     private void enforceAccessPermission() {
+         mContext.enforceCallingOrSelfPermission(
+                 android.Manifest.permission.ACCESS_NETWORK_STATE,
+diff --git a/test-runner/src/android/test/mock/MockContext.java b/test-runner/src/android/test/mock/MockContext.java
+index ffd757c..1ca0dba 100644
+--- a/test-runner/src/android/test/mock/MockContext.java
++++ b/test-runner/src/android/test/mock/MockContext.java
+@@ -338,6 +338,11 @@ public class MockContext extends Context {
+     }
+ 
+     @Override
++    public int checkMockPermission(String permission, int pid, int uid) {
++        throw new UnsupportedOperationException();
++    }	
++
++    @Override
+     public int checkCallingPermission(String permission) {
+         throw new UnsupportedOperationException();
+     }
+@@ -348,6 +353,11 @@ public class MockContext extends Context {
+     }
+ 
+     @Override
++    public int checkCallingOrSelfMockPermission(String permission) {
++	throw new UnsupportedOperationException();
++    }
++
++    @Override
+     public void enforcePermission(
+             String permission, int pid, int uid, String message) {
+         throw new UnsupportedOperationException();
+diff --git a/test-runner/src/android/test/mock/MockPackageManager.java b/test-runner/src/android/test/mock/MockPackageManager.java
+index 4964f03..d612c20 100644
+--- a/test-runner/src/android/test/mock/MockPackageManager.java
++++ b/test-runner/src/android/test/mock/MockPackageManager.java
+@@ -137,6 +137,11 @@ public class MockPackageManager extends PackageManager {
+     }
+ 
+     @Override
++    public int checkMockPermission(String permName, String pkgName) {
++        throw new UnsupportedOperationException();
++    }
++
++    @Override
+     public boolean addPermission(PermissionInfo info) {
+         throw new UnsupportedOperationException();
+     }
+diff --git a/tools/layoutlib/bridge/src/com/android/layoutlib/bridge/BridgeContext.java b/tools/layoutlib/bridge/src/com/android/layoutlib/bridge/BridgeContext.java
+index 744bfbe..c47b05e 100644
+--- a/tools/layoutlib/bridge/src/com/android/layoutlib/bridge/BridgeContext.java
++++ b/tools/layoutlib/bridge/src/com/android/layoutlib/bridge/BridgeContext.java
+@@ -798,6 +798,13 @@ public final class BridgeContext extends Context {
+     }
+ 
+     @Override
++    public int checkCallingOrSelfMockPermission(String arg0) {
++	// TODO Auto-generated method stub
++	return 0;
++    }
++
++
++    @Override
+     public int checkCallingOrSelfUriPermission(Uri arg0, int arg1) {
+         // TODO Auto-generated method stub
+         return 0;
+@@ -822,6 +829,12 @@ public final class BridgeContext extends Context {
+     }
+ 
+     @Override
++    public int checkMockPermission(String arg0, int arg1, int arg2) {
++        // TODO Auto-generated method stub
++        return 0;
++    }
++
++    @Override
+     public int checkUriPermission(Uri arg0, int arg1, int arg2, int arg3) {
+         // TODO Auto-generated method stub
+         return 0;
+-- 
+1.7.0.4
+

@@ -1,0 +1,164 @@
+From 836d28dc61590af859e393bc19396538b5c5ebe2 Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Thu, 16 Sep 2010 16:18:17 +0100
+Subject: [PATCH 1/2] Implement mock networking in the Android kernel
+
+---
+ include/linux/android_aid.h |    1 +
+ net/Kconfig                 |    8 ++++++++
+ net/ipv4/af_inet.c          |   31 ++++++++++++++++++++++++++++++-
+ net/ipv6/af_inet6.c         |   21 ++++++++++++++++++++-
+ 4 files changed, 59 insertions(+), 2 deletions(-)
+
+diff --git a/include/linux/android_aid.h b/include/linux/android_aid.h
+index 7f16a14..e550287 100644
+--- a/include/linux/android_aid.h
++++ b/include/linux/android_aid.h
+@@ -23,4 +23,5 @@
+ #define AID_NET_RAW      3004
+ #define AID_NET_ADMIN    3005
+ 
++#define AID_MOCK_INET    8003
+ #endif
+diff --git a/net/Kconfig b/net/Kconfig
+index 94312cb..769b3a6 100644
+--- a/net/Kconfig
++++ b/net/Kconfig
+@@ -85,6 +85,14 @@ config ANDROID_PARANOID_NETWORK
+ 	help
+ 		none
+ 
++config ANDROID_MOCK_NETWORK
++       bool "Make socket networking useless for certain groups"
++       default y
++       help
++		none
++
++
++
+ config NETWORK_SECMARK
+ 	bool "Security Marking"
+ 	help
+diff --git a/net/ipv4/af_inet.c b/net/ipv4/af_inet.c
+index 58525bd..0bf0495 100644
+--- a/net/ipv4/af_inet.c
++++ b/net/ipv4/af_inet.c
+@@ -116,9 +116,11 @@
+ #include <linux/mroute.h>
+ #endif
+ 
+-#ifdef CONFIG_ANDROID_PARANOID_NETWORK
++#if defined(CONFIG_ANDROID_PARANOID_NETWORK) || defined(CONFIG_ANDROID_MOCK_NETWORK)
+ #include <linux/android_aid.h>
++#endif
+ 
++#ifdef CONFIG_ANDROID_PARANOID_NETWORK
+ static inline int current_has_network(void)
+ {
+ 	return in_egroup_p(AID_INET) || capable(CAP_NET_RAW);
+@@ -130,6 +132,18 @@ static inline int current_has_network(void)
+ }
+ #endif
+ 
++#ifdef CONFIG_ANDROID_MOCK_NETWORK
++static inline int current_mock_network(void)
++{
++       return in_egroup_p(AID_MOCK_INET);
++}
++#else
++static inline int current_mock_network(void)
++{
++       return 0;
++}
++#endif
++
+ /* The inetsw table contains everything that inet_create needs to
+  * build a new socket.
+  */
+@@ -468,6 +482,11 @@ int inet_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
+ 	int chk_addr_ret;
+ 	int err;
+ 
++	if (current_mock_network()) {
++		addr->sin_addr.s_addr = INADDR_LOOPBACK;
++		printk(KERN_INFO "Mocking socket uid=%d", current_uid());
++	}
++
+ 	/* If the socket has its own bind function then use it. (RAW) */
+ 	if (sk->sk_prot->bind) {
+ 		err = sk->sk_prot->bind(sk, uaddr, addr_len);
+@@ -546,6 +565,11 @@ int inet_dgram_connect(struct socket *sock, struct sockaddr * uaddr,
+ {
+ 	struct sock *sk = sock->sk;
+ 
++	if (current_mock_network()) {
++		printk(KERN_INFO "Mocking socket uid=%d", current_uid());
++		return -ETIMEDOUT;
++	}
++
+ 	if (uaddr->sa_family == AF_UNSPEC)
+ 		return sk->sk_prot->disconnect(sk, flags);
+ 
+@@ -589,6 +613,11 @@ int inet_stream_connect(struct socket *sock, struct sockaddr *uaddr,
+ 	int err;
+ 	long timeo;
+ 
++	if (current_mock_network()) {
++		printk(KERN_INFO "Mocking socket uid=%d", current_uid());
++		return -ETIMEDOUT;
++	}
++
+ 	lock_sock(sk);
+ 
+ 	if (uaddr->sa_family == AF_UNSPEC) {
+diff --git a/net/ipv6/af_inet6.c b/net/ipv6/af_inet6.c
+index 2f7c3bf..aee63a0 100644
+--- a/net/ipv6/af_inet6.c
++++ b/net/ipv6/af_inet6.c
+@@ -62,9 +62,11 @@
+ #include <asm/system.h>
+ #include <linux/mroute6.h>
+ 
+-#ifdef CONFIG_ANDROID_PARANOID_NETWORK
++#if defined(CONFIG_ANDROID_PARANOID_NETWORK) || defined(CONFIG_ANDROID_MOCK_NETWORK)
+ #include <linux/android_aid.h>
++#endif
+ 
++#ifdef CONFIG_ANDROID_PARANOID_NETWORK
+ static inline int current_has_network(void)
+ {
+ 	return in_egroup_p(AID_INET) || capable(CAP_NET_RAW);
+@@ -76,6 +78,18 @@ static inline int current_has_network(void)
+ }
+ #endif
+ 
++#ifdef CONFIG_ANDROID_MOCK_NETWORK
++static inline int current_mock_network(void)
++{
++       return in_egroup_p(AID_MOCK_INET);
++}
++#else
++static inline int current_mock_network(void)
++{
++       return 0;
++}
++#endif
++
+ MODULE_AUTHOR("Cast of dozens");
+ MODULE_DESCRIPTION("IPv6 protocol stack for Linux");
+ MODULE_LICENSE("GPL");
+@@ -281,6 +295,11 @@ int inet6_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
+ 	int addr_type = 0;
+ 	int err = 0;
+ 
++	if (current_mock_network()) {
++		addr->sin6_addr = in6addr_loopback;
++		printk(KERN_INFO "Mocking socket uid=%d", current_uid());
++	}
++
+ 	/* If the socket has its own bind function then use it. */
+ 	if (sk->sk_prot->bind)
+ 		return sk->sk_prot->bind(sk, uaddr, addr_len);
+-- 
+1.7.0.4
+

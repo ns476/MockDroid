@@ -1,0 +1,27 @@
+From 487c2b178fc43f2f71bc8d196a5cb39b7b522330 Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Thu, 16 Sep 2010 16:21:19 +0100
+Subject: [PATCH 2/2] Mount root filesystem read-write
+
+Change-Id: Ib4bd97da91b904b6b67f41b42c46e368cae6d4a0
+---
+ rootdir/init.rc |    3 ++-
+ 1 files changed, 2 insertions(+), 1 deletions(-)
+
+diff --git a/rootdir/init.rc b/rootdir/init.rc
+index 1e446f7..6f0fed3 100644
+--- a/rootdir/init.rc
++++ b/rootdir/init.rc
+@@ -83,7 +83,8 @@ loglevel 3
+ # mount mtd partitions
+     # Mount /system rw first to give the filesystem a chance to save a checkpoint
+     mount yaffs2 mtd@system /system
+-    mount yaffs2 mtd@system /system ro remount
++    # We'll keep it read-write..
++    # mount yaffs2 mtd@system /system ro remount
+ 
+     # We chown/chmod /data again so because mount is run as root + defaults
+     mount yaffs2 mtd@userdata /data nosuid nodev
+-- 
+1.7.0.4
+

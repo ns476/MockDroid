@@ -1,0 +1,88 @@
+From b8557ec4d9d425ae169dde5740dbb0bef273577b Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Tue, 12 Oct 2010 13:16:58 +0100
+Subject: [PATCH 2/2] Fix errors in CalendarProvider2
+
+Change-Id: Ic0233b04f6304269e156c7d3582eb39f177f577f
+---
+ .../providers/calendar/CalendarProvider2.java      |   29 +++++++++++++++----
+ 1 files changed, 23 insertions(+), 6 deletions(-)
+
+diff --git a/src/com/android/providers/calendar/CalendarProvider2.java b/src/com/android/providers/calendar/CalendarProvider2.java
+index 8894719..3c98cc2 100644
+--- a/src/com/android/providers/calendar/CalendarProvider2.java
++++ b/src/com/android/providers/calendar/CalendarProvider2.java
+@@ -748,7 +748,7 @@ public class CalendarProvider2 extends SQLiteContentProvider implements OnAccoun
+ 
+     @Override
+     public Uri insert(Uri uri, ContentValues values) {
+-	if (getContext().checkCallingOrSelfPermission("android.permission.WRITE_CALENDAR") == PackageManager.PERMISSION_MOCKED) {
++	if (getContext().checkCallingOrSelfMockPermission("android.permission.WRITE_CALENDAR") == PackageManager.PERMISSION_MOCKED) {
+ 	    return null;
+ 	} else {
+ 	    return super.insert(uri, values);
+@@ -757,7 +757,7 @@ public class CalendarProvider2 extends SQLiteContentProvider implements OnAccoun
+ 
+     @Override
+     public int bulkInsert(Uri uri, ContentValues[] values) {
+-	if (getContext().checkCallingOrSelfPermission("android.permission.WRITE_CALENDAR") == PackageManager.PERMISSION_MOCKED) {
++	if (getContext().checkCallingOrSelfMockPermission("android.permission.WRITE_CALENDAR") == PackageManager.PERMISSION_MOCKED) {
+ 	    return 1;
+ 	} else {
+ 	    return super.bulkInsert(uri, values);
+@@ -766,7 +766,7 @@ public class CalendarProvider2 extends SQLiteContentProvider implements OnAccoun
+ 
+     @Override
+     public int update(Uri uri, ContentValues values, String selection, String[] selectionArgs) {
+-	if (getContext().checkCallingOrSelfPermission("android.permission.WRITE_CALENDAR") == PackageManager.PERMISSION_MOCKED) {
++	if (getContext().checkCallingOrSelfMockPermission("android.permission.WRITE_CALENDAR") == PackageManager.PERMISSION_MOCKED) {
+ 	    return 1;
+ 	} else {
+ 	    return super.update(uri, values, selection, selectionArgs);
+@@ -775,7 +775,7 @@ public class CalendarProvider2 extends SQLiteContentProvider implements OnAccoun
+ 
+     @Override
+     public int delete(Uri uri, String selection, String[] selectionArgs) {
+-	if (getContext().checkCallingOrSelfPermission("android.permission.WRITE_CALENDAR") == PackageManager.PERMISSION_MOCKED) {
++	if (getContext().checkCallingOrSelfMockPermission("android.permission.WRITE_CALENDAR") == PackageManager.PERMISSION_MOCKED) {
+ 	    return 1;
+ 	} else {
+ 	    return super.delete(uri, selection, selectionArgs);
+@@ -841,7 +841,16 @@ public class CalendarProvider2 extends SQLiteContentProvider implements OnAccoun
+         }
+         String selectionArgs[] = new String[] {String.valueOf(rangeEnd),
+                 String.valueOf(rangeBegin)};
+-        return qb.query(mDb, projection, selection, selectionArgs, null /* groupBy */,
++
++	SQLiteDatabase db;
++	
++	if (getContext().checkCallingOrSelfMockPermission("android.permission.READ_CALENDAR") == PackageManager.PERMISSION_MOCKED) {
++	    db = mMockDbHelper.getReadableDatabase();
++	} else {
++	    db = mDbHelper.getReadableDatabase();
++	}
++
++        return qb.query(db, projection, selection, selectionArgs, null /* groupBy */,
+                 null /* having */, sort);
+     }
+ 
+@@ -862,7 +871,15 @@ public class CalendarProvider2 extends SQLiteContentProvider implements OnAccoun
+         qb.appendWhere("startDay<=? AND endDay>=?");
+         String selectionArgs[] = new String[] {String.valueOf(end), String.valueOf(begin)};
+ 
+-        return qb.query(mDb, projection, selection, selectionArgs,
++	SQLiteDatabase db;
++	
++	if (getContext().checkCallingOrSelfMockPermission("android.permission.READ_CALENDAR") == PackageManager.PERMISSION_MOCKED) {
++	    db = mMockDbHelper.getReadableDatabase();
++	} else {
++	    db = mDbHelper.getReadableDatabase();
++	}
++
++        return qb.query(db, projection, selection, selectionArgs,
+                 Instances.START_DAY /* groupBy */, null /* having */, null);
+     }
+ 
+-- 
+1.7.0.4
+

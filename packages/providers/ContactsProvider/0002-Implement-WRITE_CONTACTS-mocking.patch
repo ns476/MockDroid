@@ -1,0 +1,46 @@
+From 9823fe8a41b694c0ab4dfd1620b4cdadfd26db67 Mon Sep 17 00:00:00 2001
+From: Nicholas Skehin <ns476@cam.ac.uk>
+Date: Tue, 19 Oct 2010 20:22:34 +0100
+Subject: [PATCH] Implement WRITE_CONTACTS mocking
+
+Change-Id: Iee06a1a1eb573529b640095ebd0008b74f754b37
+---
+ .../providers/contacts/ContactsProvider2.java      |    9 +++++++++
+ 1 files changed, 9 insertions(+), 0 deletions(-)
+
+diff --git a/src/com/android/providers/contacts/ContactsProvider2.java b/src/com/android/providers/contacts/ContactsProvider2.java
+index 8474109..cde83cd 100644
+--- a/src/com/android/providers/contacts/ContactsProvider2.java
++++ b/src/com/android/providers/contacts/ContactsProvider2.java
+@@ -2246,12 +2246,18 @@ public class ContactsProvider2 extends SQLiteContentProvider implements OnAccoun
+ 
+     @Override
+     public Uri insert(Uri uri, ContentValues values) {
++	if (getContext().checkCallingOrSelfMockPermission("android.permission.WRITE_CONTACTS") == PackageManager.PERMISSION_MOCKED) {
++	    return null;
++	}
+         waitForAccess();
+         return super.insert(uri, values);
+     }
+ 
+     @Override
+     public int update(Uri uri, ContentValues values, String selection, String[] selectionArgs) {
++	if (getContext().checkCallingOrSelfMockPermission("android.permission.WRITE_CONTACTS") == PackageManager.PERMISSION_MOCKED) {
++	    return 0;
++	}
+         if (mAccessLatch != null) {
+             // We are stuck trying to upgrade contacts db.  The only update request
+             // allowed in this case is an update of provider status, which will trigger
+@@ -2273,6 +2279,9 @@ public class ContactsProvider2 extends SQLiteContentProvider implements OnAccoun
+ 
+     @Override
+     public int delete(Uri uri, String selection, String[] selectionArgs) {
++	if (getContext().checkCallingOrSelfMockPermission("android.permission.WRITE_CONTACTS") == PackageManager.PERMISSION_MOCKED) {
++	    return 0;
++	}
+         waitForAccess();
+         return super.delete(uri, selection, selectionArgs);
+     }
+-- 
+1.7.0.4
+
