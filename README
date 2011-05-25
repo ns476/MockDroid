@@ -1,0 +1,3 @@
+This repo contains patches which implement faking of application
+permissions for Android. They've probably bitrotted a little since I
+wrote them, but might still be useful for someone.
